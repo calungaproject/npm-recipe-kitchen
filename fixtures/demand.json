@@ -1,0 +1,12 @@
+{
+  "_comment": "PoC illustrative data — values are small placeholders, not real download counts.",
+  "source": "poc_fixture",
+  "captured_at": "2026-08-13T00:00:00Z",
+  "packages": {
+    "semver@7.7.2": 320,
+    "commander@13.1.0": 180,
+    "debug@4.4.1": 150,
+    "ms@2.1.3": 200,
+    "chalk@5.4.1": 90
+  }
+}

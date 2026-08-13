@@ -1,0 +1,17 @@
+{
+  "name": "app-a",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "commander": "13.1.0",
+    "debug": "4.4.1",
+    "semver": "7.7.2"
+  }
+}
