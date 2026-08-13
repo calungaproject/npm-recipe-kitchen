@@ -1,0 +1,24 @@
+{
+  "name": "semver",
+  "version": "7.7.2",
+  "description": "The semantic versioner for npm",
+  "native_tier": "A",
+  "source": {
+    "url": "https://github.com/npm/node-semver.git",
+    "ref": "v7.7.2",
+    "ref_type": "tag"
+  },
+  "upstream_npm": {
+    "version": "7.7.2"
+  },
+  "entrypoint": "build.entrypoint.sh",
+  "smoke": "verify.smoke.sh",
+  "outputs": [
+    {
+      "id": "main",
+      "type": "npm-package",
+      "path": "out/semver-7.7.2.tgz",
+      "pulp_name": "semver"
+    }
+  ]
+}
