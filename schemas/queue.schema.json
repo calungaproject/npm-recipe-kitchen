@@ -1,0 +1,51 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "queue.schema.json",
+  "title": "Queue",
+  "description": "Prioritised build queue. Each entry exposes structured fields from which a human-readable 'why' can be rendered.",
+  "type": "object",
+  "definitions": {
+    "name_at_version": {
+      "type": "string",
+      "pattern": "^(@[a-z0-9][a-z0-9._-]*/)?[a-z0-9][a-z0-9._-]*@\\d+\\.\\d+\\.\\d+([-+][-a-zA-Z0-9.+]+)?$"
+    }
+  },
+  "properties": {
+    "schema_version": { "const": 1 },
+    "entries": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "candidate": { "$ref": "#/definitions/name_at_version" },
+          "immediate_l3_unlocks": {
+            "type": "array",
+            "items": { "$ref": "#/definitions/name_at_version" },
+            "uniqueItems": true
+          },
+          "gap_reductions": {
+            "type": "object",
+            "patternProperties": {
+              "^(@[a-z0-9][a-z0-9._-]*/)?[a-z0-9][a-z0-9._-]*@\\d+\\.\\d+\\.\\d+([-+][-a-zA-Z0-9.+]+)?$": {
+                "type": "integer",
+                "minimum": 1
+              }
+            },
+            "additionalProperties": false
+          },
+          "affected_packages": {
+            "type": "array",
+            "items": { "$ref": "#/definitions/name_at_version" },
+            "uniqueItems": true
+          },
+          "native_tier": { "type": "string", "minLength": 1 },
+          "demand": { "type": "integer", "minimum": 0 }
+        },
+        "required": ["candidate", "immediate_l3_unlocks", "gap_reductions", "affected_packages", "native_tier", "demand"],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": ["schema_version", "entries"],
+  "additionalProperties": false
+}

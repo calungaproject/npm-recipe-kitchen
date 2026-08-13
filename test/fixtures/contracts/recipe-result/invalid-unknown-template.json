@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "package": "semver@7.7.2",
+  "status": "drafted",
+  "template_id": "custom-yolo",
+  "parameters": {},
+  "evidence": [{ "kind": "none", "detail": "n/a" }],
+  "confidence": 0.5,
+  "could_not_verify": []
+}

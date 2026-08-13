@@ -1,0 +1,33 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "registry-input.schema.json",
+  "title": "Registry Input",
+  "description": "Snapshot of recipes found in a registry checkout. State is 'recipe_present', which does not imply catalogue availability.",
+  "type": "object",
+  "definitions": {
+    "name_at_version": {
+      "type": "string",
+      "pattern": "^(@[a-z0-9][a-z0-9._-]*/)?[a-z0-9][a-z0-9._-]*@\\d+\\.\\d+\\.\\d+([-+][-a-zA-Z0-9.+]+)?$"
+    }
+  },
+  "properties": {
+    "schema_version": { "const": 1 },
+    "repository": { "type": "string", "minLength": 1 },
+    "commit_sha": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+    "recipes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "identity": { "$ref": "#/definitions/name_at_version" },
+          "path": { "type": "string", "minLength": 1 },
+          "state": { "const": "recipe_present" }
+        },
+        "required": ["identity", "path", "state"],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": ["schema_version", "repository", "commit_sha", "recipes"],
+  "additionalProperties": false
+}

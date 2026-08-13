@@ -1,0 +1,90 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "recipe-result.schema.json",
+  "title": "Recipe Result",
+  "description": "Outcome of a recipe-drafting attempt: either a fully drafted recipe or a refusal requiring human escalation.",
+  "type": "object",
+  "definitions": {
+    "name_at_version": {
+      "type": "string",
+      "pattern": "^(@[a-z0-9][a-z0-9._-]*/)?[a-z0-9][a-z0-9._-]*@\\d+\\.\\d+\\.\\d+([-+][-a-zA-Z0-9.+]+)?$"
+    }
+  },
+  "properties": {
+    "schema_version": { "const": 1 },
+    "package": { "$ref": "#/definitions/name_at_version" },
+    "status": { "enum": ["drafted", "needs_human"] },
+    "template_id": {
+      "type": "string",
+      "enum": ["source-build", "binary-repack", "patch-and-build"]
+    },
+    "parameters": {
+      "type": "object",
+      "maxProperties": 20,
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "type": { "enum": ["string", "boolean", "integer"] },
+          "value": {
+            "oneOf": [
+              { "type": "string" },
+              { "type": "boolean" },
+              { "type": "integer" }
+            ]
+          }
+        },
+        "required": ["type", "value"],
+        "additionalProperties": false
+      }
+    },
+    "evidence": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "kind": { "type": "string", "minLength": 1 },
+          "detail": { "type": "string", "maxLength": 2000 }
+        },
+        "required": ["kind", "detail"],
+        "additionalProperties": false
+      },
+      "minItems": 1,
+      "maxItems": 50
+    },
+    "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+    "could_not_verify": {
+      "type": "array",
+      "items": { "type": "string", "maxLength": 500 },
+      "maxItems": 20
+    },
+    "reason": { "type": "string", "maxLength": 500, "minLength": 1 },
+    "escalation_target": { "type": "string", "maxLength": 200, "minLength": 1 }
+  },
+  "required": ["schema_version", "package", "status"],
+  "additionalProperties": false,
+  "if": {
+    "properties": { "status": { "const": "drafted" } },
+    "required": ["status"]
+  },
+  "then": {
+    "required": ["template_id", "parameters", "evidence", "confidence", "could_not_verify"],
+    "not": {
+      "anyOf": [
+        { "required": ["reason"] },
+        { "required": ["escalation_target"] }
+      ]
+    }
+  },
+  "else": {
+    "required": ["reason", "escalation_target"],
+    "not": {
+      "anyOf": [
+        { "required": ["template_id"] },
+        { "required": ["parameters"] },
+        { "required": ["evidence"] },
+        { "required": ["confidence"] },
+        { "required": ["could_not_verify"] }
+      ]
+    }
+  }
+}

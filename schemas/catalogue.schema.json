@@ -1,0 +1,27 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "catalogue.schema.json",
+  "title": "Catalogue",
+  "description": "Internal package catalogue with availability status per name@version entry.",
+  "type": "object",
+  "properties": {
+    "schema_version": { "const": 1 },
+    "entries": {
+      "type": "object",
+      "patternProperties": {
+        "^(@[a-z0-9][a-z0-9._-]*/)?[a-z0-9][a-z0-9._-]*@\\d+\\.\\d+\\.\\d+([-+][-a-zA-Z0-9.+]+)?$": {
+          "type": "object",
+          "properties": {
+            "available": { "type": "boolean" },
+            "source": { "type": "string", "minLength": 1 }
+          },
+          "required": ["available"],
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "required": ["schema_version", "entries"],
+  "additionalProperties": false
+}

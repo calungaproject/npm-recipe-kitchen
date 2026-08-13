@@ -1,0 +1,6 @@
+{
+  "schema_version": 1,
+  "entries": {
+    "semver@7.7.2": { "source": "poc_mock_promotion" }
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "schema_version": 1,
+  "consumer": "my-app@1.0.0",
+  "direct_required": ["semver@7.7.2", "lodash@4.17.21"],
+  "production_closure": ["semver@7.7.2", "lodash@4.17.21", "lru-cache@10.0.0"],
+  "closure_gaps": ["lru-cache@10.0.0"]
+}

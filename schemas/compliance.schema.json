@@ -1,0 +1,34 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "compliance.schema.json",
+  "title": "Compliance",
+  "description": "Dependency compliance report for a single consumer, listing required packages, the full production closure, and gaps against the catalogue.",
+  "type": "object",
+  "definitions": {
+    "name_at_version": {
+      "type": "string",
+      "pattern": "^(@[a-z0-9][a-z0-9._-]*/)?[a-z0-9][a-z0-9._-]*@\\d+\\.\\d+\\.\\d+([-+][-a-zA-Z0-9.+]+)?$"
+    }
+  },
+  "properties": {
+    "schema_version": { "const": 1 },
+    "consumer": { "$ref": "#/definitions/name_at_version" },
+    "direct_required": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/name_at_version" },
+      "uniqueItems": true
+    },
+    "production_closure": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/name_at_version" },
+      "uniqueItems": true
+    },
+    "closure_gaps": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/name_at_version" },
+      "uniqueItems": true
+    }
+  },
+  "required": ["schema_version", "consumer", "direct_required", "production_closure", "closure_gaps"],
+  "additionalProperties": false
+}

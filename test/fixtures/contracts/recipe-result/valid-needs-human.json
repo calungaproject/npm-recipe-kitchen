@@ -1,0 +1,7 @@
+{
+  "schema_version": 1,
+  "package": "native-addon@2.0.0",
+  "status": "needs_human",
+  "reason": "Package requires native compilation with platform-specific flags that cannot be auto-detected.",
+  "escalation_target": "native-builds-team"
+}

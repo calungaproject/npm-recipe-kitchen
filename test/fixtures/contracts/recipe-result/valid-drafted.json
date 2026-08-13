@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "package": "semver@7.7.2",
+  "status": "drafted",
+  "template_id": "source-build",
+  "parameters": {
+    "source_url": { "type": "string", "value": "https://github.com/npm/node-semver.git" },
+    "ref": { "type": "string", "value": "v7.7.2" },
+    "run_tests": { "type": "boolean", "value": true }
+  },
+  "evidence": [
+    { "kind": "test-result", "detail": "All 123 upstream tests pass" }
+  ],
+  "confidence": 0.95,
+  "could_not_verify": ["no fuzz tests available"]
+}

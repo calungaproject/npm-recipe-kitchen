@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "entries": [
+    {
+      "candidate": "lru-cache@10.0.0",
+      "immediate_l3_unlocks": [],
+      "gap_reductions": {},
+      "affected_packages": [],
+      "native_tier": "A",
+      "demand": -1
+    }
+  ]
+}
