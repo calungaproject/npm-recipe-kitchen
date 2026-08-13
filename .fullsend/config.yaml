@@ -4,13 +4,11 @@
 # This file configures fullsend for per-repo installation mode.
 # See ADR 0033 for details.
 version: "1"
-roles:
-    - fullsend
-    - triage
-    - coder
-    - review
-    - retro
-    - prioritize
+kill_switch: true
+roles: []
+agents:
+    - name: npm-recipe-draft
+      source: harness/npm-recipe-draft.yaml
 allowed_remote_resources:
     - https://raw.githubusercontent.com/fullsend-ai/fullsend/
     - https://raw.githubusercontent.com/fullsend-ai/agents/
