@@ -16,7 +16,7 @@
     "status": { "enum": ["drafted", "needs_human"] },
     "template_id": {
       "type": "string",
-      "enum": ["source-build", "binary-repack", "patch-and-build"]
+      "enum": ["source-build", "binary-repack", "patch-and-build", "tier-a-npm-pack-no-build-v1"]
     },
     "parameters": {
       "type": "object",
