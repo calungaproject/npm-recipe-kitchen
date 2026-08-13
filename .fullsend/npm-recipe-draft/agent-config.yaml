@@ -1,0 +1,39 @@
+# Custom Fullsend agent: npm-recipe-draft
+#
+# Drafts npm package recipes for Tier A packages that need no compile/build
+# step. Emits a reviewed template_id and bounded parameters; never emits
+# arbitrary paths, complete shell, or a free-form files map.
+#
+# Trigger:  /fs-onboard <name>@<version>  (issue comment, write-permission required)
+# Output:   recipe-result schema (drafted | needs_human)
+# Safety:   kill_switch must be false, platform collaborator-permission gate
+#           must pass before CEL trigger is evaluated, output is validated by
+#           a deterministic post-step before rendering.
+#
+# Validated against fullsend v0.36.0 harness loader.
+
+name: npm-recipe-draft
+description: Draft npm package onboarding recipes (Tier A, no-build)
+
+# The trigger restricts to issue_comment events matching the /fs-onboard pattern.
+# Platform authorization (write-level collaborator permission) is enforced by
+# Fullsend's reusable-dispatch workflow before this agent is invoked.
+trigger:
+  event: issue_comment
+  pattern: "/fs-onboard"
+
+# Input validation: the agent accepts only a bounded package identity.
+input:
+  format: "name@version"
+  pattern: "^(@[a-z0-9][a-z0-9._-]*/)?[a-z0-9][a-z0-9._-]*@\\d+\\.\\d+\\.\\d+$"
+
+# Output contract: the existing recipe-result schema.
+output_schema: schemas/recipe-result.schema.json
+
+# Skills loaded into the agent context.
+skills:
+  - npm-recipe-draft
+
+# Post-step: deterministic validation of model output before any rendering.
+# The post-script exits non-zero if validation fails, blocking the result.
+post_script: scripts/lib/post-recipe-validate.sh
