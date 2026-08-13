@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 const ajv = new Ajv({ allErrors: true });
 
 const CONTRACT_NAMES = [
-  'catalogue',
+  'catalog',
   'compliance',
   'queue',
   'recipe-result',

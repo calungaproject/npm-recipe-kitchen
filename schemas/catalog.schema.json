@@ -1,8 +1,8 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "catalogue.schema.json",
-  "title": "Catalogue",
-  "description": "Internal package catalogue with availability status per name@version entry.",
+  "$id": "catalog.schema.json",
+  "title": "Catalog",
+  "description": "Internal package catalog with availability status per name@version entry.",
   "type": "object",
   "properties": {
     "schema_version": { "const": 1 },

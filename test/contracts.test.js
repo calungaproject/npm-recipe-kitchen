@@ -15,7 +15,7 @@ describe('validate', () => {
 
   it('exports the list of contract names', () => {
     assert.deepStrictEqual(CONTRACT_NAMES, [
-      'catalogue',
+      'catalog',
       'compliance',
       'queue',
       'recipe-result',
@@ -24,20 +24,20 @@ describe('validate', () => {
   });
 });
 
-describe('catalogue', () => {
+describe('catalog', () => {
   it('accepts the valid fixture', () => {
-    const result = validate('catalogue', loadFixture('catalogue', 'valid'));
+    const result = validate('catalog', loadFixture('catalog', 'valid'));
     assert.strictEqual(result.valid, true, JSON.stringify(result.errors));
   });
 
   it('rejects an entry missing the available field', () => {
-    const result = validate('catalogue', loadFixture('catalogue', 'invalid-missing-available'));
+    const result = validate('catalog', loadFixture('catalog', 'invalid-missing-available'));
     assert.strictEqual(result.valid, false);
     assert.ok(result.errors.some(e => e.params?.missingProperty === 'available'));
   });
 
   it('rejects unknown top-level fields', () => {
-    const result = validate('catalogue', {
+    const result = validate('catalog', {
       schema_version: 1,
       entries: {},
       extra: true,
@@ -47,7 +47,7 @@ describe('catalogue', () => {
   });
 
   it('rejects unknown fields inside an entry', () => {
-    const result = validate('catalogue', {
+    const result = validate('catalog', {
       schema_version: 1,
       entries: { 'semver@7.7.2': { available: true, spurious: 1 } },
     });
@@ -55,7 +55,7 @@ describe('catalogue', () => {
   });
 
   it('rejects a malformed entry key', () => {
-    const result = validate('catalogue', {
+    const result = validate('catalog', {
       schema_version: 1,
       entries: { 'not a valid key': { available: true } },
     });
@@ -63,7 +63,7 @@ describe('catalogue', () => {
   });
 
   it('rejects schema_version other than 1', () => {
-    const result = validate('catalogue', {
+    const result = validate('catalog', {
       schema_version: 2,
       entries: {},
     });
@@ -71,7 +71,7 @@ describe('catalogue', () => {
   });
 
   it('rejects a bare trailing hyphen in a version suffix', () => {
-    const result = validate('catalogue', {
+    const result = validate('catalog', {
       schema_version: 1,
       entries: { 'pkg@1.0.0-': { available: true } },
     });
@@ -79,7 +79,7 @@ describe('catalogue', () => {
   });
 
   it('accepts scoped package keys', () => {
-    const result = validate('catalogue', {
+    const result = validate('catalog', {
       schema_version: 1,
       entries: { '@scope/pkg@1.0.0': { available: true } },
     });
