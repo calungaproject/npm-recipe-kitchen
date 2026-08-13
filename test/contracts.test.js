@@ -19,7 +19,7 @@ describe('validate', () => {
       'compliance',
       'queue',
       'recipe-result',
-      'registry-input',
+      'registry-snapshot',
     ]);
   });
 });
@@ -254,20 +254,20 @@ describe('recipe-result', () => {
   });
 });
 
-describe('registry-input', () => {
+describe('registry-snapshot', () => {
   it('accepts the valid fixture', () => {
-    const result = validate('registry-input', loadFixture('registry-input', 'valid'));
+    const result = validate('registry-snapshot', loadFixture('registry-snapshot', 'valid'));
     assert.strictEqual(result.valid, true, JSON.stringify(result.errors));
   });
 
   it('rejects state "available" (must be "recipe_present")', () => {
-    const result = validate('registry-input', loadFixture('registry-input', 'invalid-state-available'));
+    const result = validate('registry-snapshot', loadFixture('registry-snapshot', 'invalid-state-available'));
     assert.strictEqual(result.valid, false);
     assert.ok(result.errors.some(e => e.path.includes('state')));
   });
 
   it('rejects a short commit SHA', () => {
-    const result = validate('registry-input', {
+    const result = validate('registry-snapshot', {
       schema_version: 1,
       repository: 'repo',
       commit_sha: 'abc123',
@@ -278,7 +278,7 @@ describe('registry-input', () => {
   });
 
   it('rejects unknown fields in recipe entries', () => {
-    const result = validate('registry-input', {
+    const result = validate('registry-snapshot', {
       schema_version: 1,
       repository: 'repo',
       commit_sha: 'a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2',
@@ -293,7 +293,7 @@ describe('registry-input', () => {
   });
 
   it('rejects uppercase hex in commit SHA', () => {
-    const result = validate('registry-input', {
+    const result = validate('registry-snapshot', {
       schema_version: 1,
       repository: 'repo',
       commit_sha: 'A1B2C3D4E5F6A1B2C3D4E5F6A1B2C3D4E5F6A1B2',

@@ -8,7 +8,7 @@ const CONTRACT_NAMES = [
   'compliance',
   'queue',
   'recipe-result',
-  'registry-input',
+  'registry-snapshot',
 ];
 
 const validators = new Map();

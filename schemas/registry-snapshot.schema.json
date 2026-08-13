@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "registry-input.schema.json",
-  "title": "Registry Input",
+  "$id": "registry-snapshot.schema.json",
+  "title": "Registry Snapshot",
   "description": "Snapshot of recipes found in a registry checkout. State is 'recipe_present', which does not imply catalog availability.",
   "type": "object",
   "definitions": {
