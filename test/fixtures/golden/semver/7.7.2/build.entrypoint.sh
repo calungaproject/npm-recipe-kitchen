@@ -30,9 +30,10 @@ mkdir -p "${OUT_DIR}" "$(dirname "${main_tgz}")"
 EXPECTED_SHA="281055e7716ef0415a8826972471331989ede58c"
 
 echo "[build.entrypoint] Cloning ${SOURCE_URL} @ ${SOURCE_REF}"
-git clone --depth 1 --branch "${SOURCE_REF}" "${SOURCE_URL}" "${SRC}"
+git clone --no-checkout "${SOURCE_URL}" "${SRC}"
 
 cd "${SRC}"
+git checkout "${SOURCE_REF}"
 
 actual_sha="$(git rev-parse HEAD)"
 [[ "${actual_sha}" == "${EXPECTED_SHA}" ]] || {

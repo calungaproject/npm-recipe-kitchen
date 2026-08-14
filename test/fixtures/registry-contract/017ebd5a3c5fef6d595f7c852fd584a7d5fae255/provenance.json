@@ -1,0 +1,7 @@
+{
+  "repository": "calungaproject/npm-registry",
+  "commit_sha": "017ebd5a3c5fef6d595f7c852fd584a7d5fae255",
+  "schema_path": "docs/manifest.schema.json",
+  "schema_sha256": "d91c2164c5130c98b958ba406efd90d2bc7df723a845858ea8f013fb4321d488",
+  "retrieved_at": "2026-08-13"
+}
