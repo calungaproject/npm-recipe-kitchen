@@ -13,7 +13,8 @@
           "type": "object",
           "properties": {
             "available": { "type": "boolean" },
-            "source": { "type": "string", "minLength": 1 }
+            "source": { "type": "string", "minLength": 1 },
+            "promoted_at": { "type": "string", "minLength": 1 }
           },
           "required": ["available"],
           "additionalProperties": false

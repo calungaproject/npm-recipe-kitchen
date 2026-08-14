@@ -10,7 +10,8 @@
   },
   "scripts": {
     "test": "node --test",
-    "check": "npm test"
+    "check": "npm test",
+    "demo": "node scripts/run-demo-loop.mjs"
   },
   "dependencies": {
     "ajv": "8.20.0"
