@@ -1,0 +1,5 @@
+# Fullsend agent harness: npm-recipe-draft
+# Validated against fullsend v0.36.0 harness loader.
+# The `agent` field points to the agent directory relative to .fullsend/.
+agent: npm-recipe-draft
+role: coder
