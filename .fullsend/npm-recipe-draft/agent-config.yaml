@@ -10,10 +10,7 @@
 #           must pass before CEL trigger is evaluated, output is validated by
 #           a deterministic post-step before rendering.
 #
-# This harness YAML format has not been validated against the Fullsend CLI
-# documentation. The exact schema should be confirmed with fullsend v0.36.0+
-# before the setup PR is published. Fields below are modeled from the
-# fullsend run CLI flags and the known-good conforma-policy-test installation.
+# Validated against fullsend v0.36.0 harness loader.
 
 name: npm-recipe-draft
 description: Draft npm package onboarding recipes (Tier A, no-build)
