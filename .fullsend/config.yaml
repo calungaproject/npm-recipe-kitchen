@@ -1,0 +1,8 @@
+# fullsend per-repo configuration for calungaproject/npm-recipe-kitchen
+# Modeled from the known-good tsd-ui/conforma-policy-test installation.
+#
+# kill_switch: true suppresses all dispatch until the setup PR has been
+# reviewed and the custom agent configuration is merged to the base branch.
+version: "1"
+kill_switch: true
+roles: []
