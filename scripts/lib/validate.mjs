@@ -11,8 +11,15 @@ const CONTRACT_NAMES = [
   'registry-snapshot',
 ];
 
+// Additive PoC seam: schemas validated through the same machinery but that are not
+// part of the frozen contract set exported as CONTRACT_NAMES. Keeping these separate
+// lets new schemas ride the validate() seam without disturbing existing consumers.
+const EXTRA_SCHEMA_NAMES = [
+  'suggestions',
+];
+
 const validators = new Map();
-for (const name of CONTRACT_NAMES) {
+for (const name of [...CONTRACT_NAMES, ...EXTRA_SCHEMA_NAMES]) {
   const schemaPath = new URL(`../../schemas/${name}.schema.json`, import.meta.url);
   const schema = JSON.parse(readFileSync(schemaPath, 'utf-8'));
   validators.set(name, ajv.compile(schema));

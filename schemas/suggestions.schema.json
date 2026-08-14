@@ -1,0 +1,39 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "suggestions.schema.json",
+  "title": "Suggestions",
+  "description": "Ranked candidate suggestions proposed by an upstream signal (e.g. popularity), independent of consumer closure gaps. Proposes candidates; the queue still proves impact.",
+  "type": "object",
+  "definitions": {
+    "name_at_version": {
+      "type": "string",
+      "pattern": "^(@[a-z0-9][a-z0-9._-]*/)?[a-z0-9][a-z0-9._-]*@\\d+\\.\\d+\\.\\d+([-+][-a-zA-Z0-9.+]+)?$"
+    }
+  },
+  "properties": {
+    "schema_version": { "const": 1 },
+    "source": { "type": "string", "minLength": 1 },
+    "captured_at": { "type": "string", "minLength": 1 },
+    "suggestions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "identity": { "$ref": "#/definitions/name_at_version" },
+          "rank": { "type": "integer", "minimum": 1 },
+          "score": { "type": "number", "minimum": 0 },
+          "rules": {
+            "type": "array",
+            "items": { "type": "string", "minLength": 1 },
+            "uniqueItems": true
+          },
+          "in_catalog": { "type": "boolean" }
+        },
+        "required": ["identity", "rank", "score", "rules", "in_catalog"],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": ["schema_version", "source", "captured_at", "suggestions"],
+  "additionalProperties": false
+}

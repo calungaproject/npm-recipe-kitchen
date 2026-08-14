@@ -27,6 +27,26 @@ This writes validated JSON artifacts to `demo/output/`:
 4. app-c retains only its chalk@5.4.1 gap and chalk becomes the sole remaining queue candidate.
 5. Promotion is separate from recipe existence, recipe approval, or recipe merge.
 
+## Suggest onboarding candidates from a signal
+
+The suggestion source proposes packages for onboarding from an explicit, extensible signal — starting with "most popular packages" — independently of the consumer closure gaps that seed the queue.
+It runs conceptually upstream of the queue: a signal feeds suggestions in; the queue then proves impact.
+
+```bash
+npm run suggest
+```
+
+This reads `fixtures/popular.json` (illustrative PoC popularity scores, not real download counts) plus `fixtures/catalog-before.json`, prints a ranked "Suggested for onboarding" list, and writes a validated `demo/output/suggestions.json`.
+Each suggestion carries its identity, rank, combined rule score, the rule(s) that surfaced it, and an `in_catalog` flag so `[new]` suggestions are distinct from `[in catalog]` already-onboarded packages.
+Ranking lives behind a pluggable rules interface (see the comment in `scripts/lib/suggest.mjs`): "popularity" is the first rule, and a second rule joins by pushing another rule object onto the array — no core rewrite.
+Inputs and clock are fixed, so repeated runs are byte-for-byte stable.
+
+### Feeding suggestions into the queue (later iteration)
+
+The suggestion source is additive today and does not change the default demo: the queue still derives its candidate set from consumer closure gaps.
+To let suggestions feed the queue, a later iteration would union the suggested identities into the queue's candidate set, add a `source` field to each queue entry (e.g. `gap` vs `suggestion`), bump the queue schema to `schema_version: 2`, and deliberately update the golden queue expectations under `demo/output/` and `test/`.
+That is intentionally deferred so this stage stays green and non-breaking.
+
 ## Verify determinism
 
 Run the demo twice and diff:

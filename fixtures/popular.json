@@ -1,0 +1,12 @@
+{
+  "_comment": "PoC illustrative data — popularity scores are hand-picked placeholders, not real npm download counts. No registry or network was queried to produce them.",
+  "source": "poc_fixture",
+  "captured_at": "2026-08-13T00:00:00Z",
+  "packages": {
+    "lodash@4.17.21": { "score": 500 },
+    "express@4.21.2": { "score": 410 },
+    "semver@7.7.2": { "score": 320 },
+    "commander@13.1.0": { "score": 180 },
+    "chalk@5.4.1": { "score": 90 }
+  }
+}
