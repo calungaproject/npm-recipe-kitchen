@@ -1,3 +1,9 @@
+/**
+ * This is where "what makes a correct Tier A recipe" is 
+ * hand-written and defined by us TL engineers through the
+ * manifest and the build/verify logic.
+ */
+
 export const TEMPLATE_ID = 'tier-a-npm-pack-no-build-v1';
 
 export const PARAM_SPEC = {
