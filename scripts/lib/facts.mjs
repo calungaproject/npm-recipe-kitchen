@@ -1,5 +1,3 @@
-import { readFileSync } from 'node:fs';
-
 const KNOWN_FACTS = new Map([
   ['semver@7.7.2', {
     package_name: 'semver',
