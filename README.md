@@ -5,7 +5,6 @@ PoC for safe npm package on-boarding through auditable recipe bundles.
 ## Current scope
 
 This repository is the **recipe kitchen**: it investigates a supplied npm package candidate and drafts a deterministic, reviewable recipe bundle.
-The focused slice implemented here has a deliberately narrow boundary.
 
 **In:** an ordered, static list of candidates supplied to this repository.
 Each candidate is an exact package name and exact version (for example `semver@7.7.2`).
@@ -28,7 +27,6 @@ Every drafted bundle is then reviewed by a human before anything further happens
 
 - It does **not** write to any registry, open a registry PR, promote, sign, build, or publish.
 - It does **not** compute compliance, queue scores, popularity, or candidate priority.
-  Those are owned elsewhere and are parked on other branches; they are intentionally excluded from this slice.
 - If provenance metadata such as `bundle.json` is ever retained, it is a kitchen-side artifact only and must never be included in a target registry PR.
 
 ## Templates and scripts are policy, not a model
