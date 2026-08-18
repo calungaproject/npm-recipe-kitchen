@@ -1,4 +1,4 @@
-import { mkdirSync, writeFileSync, lstatSync, realpathSync, renameSync, openSync, writeSync, closeSync, constants as fsConstants } from 'node:fs';
+import { mkdirSync, writeFileSync, lstatSync, realpathSync, renameSync, openSync, writeSync, closeSync, unlinkSync, constants as fsConstants } from 'node:fs';
 import { join, resolve, normalize, relative, basename, dirname } from 'node:path';
 import { tmpdir } from 'node:os';
 import { randomBytes } from 'node:crypto';
@@ -19,7 +19,6 @@ const PATH_TRAVERSAL_RE = /\.\./;
 const ABSOLUTE_PATH_RE = /^[/\\]/;
 const NPM_NAME_RE = /^(@[a-z0-9][a-z0-9._-]*\/)?[a-z0-9][a-z0-9._-]*$/;
 const SEMVER_RE = /^\d+\.\d+\.\d+([-+][-a-zA-Z0-9.+]+)?$/;
-const HEX40_RE = /^[0-9a-f]{40}$/;
 
 export function render(recipeResult, repoRoot) {
   const errors = [];
@@ -137,6 +136,9 @@ function validateParameters(params, spec, errors) {
       if (val.length > MAX_PARAM_VALUE_LENGTH) {
         errors.push({ path: `/parameters/${key}/value`, message: `exceeds absolute max length ${MAX_PARAM_VALUE_LENGTH}` });
       }
+      if (def.pattern && !def.pattern.test(val)) {
+        errors.push({ path: `/parameters/${key}/value`, message: `value "${val}" does not match the required format for ${key}` });
+      }
     } else if (def.type === 'boolean') {
       if (typeof val !== 'boolean') {
         errors.push({ path: `/parameters/${key}/value`, message: `expected boolean value` });
@@ -215,7 +217,7 @@ function writeAtomically(outputDir, files, absBase) {
     }
   } catch (err) {
     for (const path of written) {
-      try { import('node:fs').then(fs => fs.unlinkSync(path)); } catch {}
+      try { unlinkSync(path); } catch {}
     }
     throw err;
   }

@@ -1,10 +1,18 @@
 import { validate } from './validate.mjs';
 import { TEMPLATES } from './renderer.mjs';
+import { SAFE_REL_PATH_RE } from './templates/tier-a-npm-pack-no-build-v1.mjs';
 
 const HEX40_RE = /^[0-9a-f]{40}$/;
 const NAME_VERSION_RE = /^(@[a-z0-9][a-z0-9._-]*\/)?[a-z0-9][a-z0-9._-]*@\d+\.\d+\.\d+([-+][-a-zA-Z0-9.+]+)?$/;
 const NPM_NAME_RE = /^(@[a-z0-9][a-z0-9._-]*\/)?[a-z0-9][a-z0-9._-]*$/;
 const SHELL_META_RE = /[$`\\;|&><(){}\[\]!#~]/;
+
+// Parameters whose values are interpolated into the generated build/smoke
+// shell scripts as relative paths inside the packed tarball. They must be
+// constrained to a strict allowlist so untrusted model output cannot inject
+// commands (e.g. a newline followed by `curl ... | sh`) into the scripts the
+// build pipeline executes.
+const SHELL_PATH_PARAMS = ['main_entry', 'cli_bin_path'];
 
 export function validateRecipeResult(result, expectedFacts) {
   const errors = [];
@@ -122,6 +130,42 @@ function validateDraftedResult(result, expectedFacts, errors) {
           path: '/parameters/source_url',
           message: 'source_url must use https://',
         });
+      }
+    }
+
+    // Shell-interpolated path parameters get a strict allowlist regardless of
+    // whether facts were supplied. This runs even in the deterministic
+    // post-step (which calls validateRecipeResult without expectedFacts), so
+    // it is the primary defense against command injection into the generated
+    // build/smoke scripts.
+    for (const key of SHELL_PATH_PARAMS) {
+      const param = result.parameters[key];
+      if (!param || typeof param.value !== 'string') continue;
+      const value = param.value;
+      if (!SAFE_REL_PATH_RE.test(value)) {
+        errors.push({
+          check: 'unsafe-shell-path',
+          path: `/parameters/${key}/value`,
+          message: `${key} "${value}" must be a relative path of [A-Za-z0-9._-] segments with no whitespace, shell metacharacters, or newlines`,
+        });
+      }
+    }
+
+    // When facts are available, cross-check the path parameters against the
+    // deterministic upstream facts the same way source_ref is checked against
+    // the known commit SHA. Untrusted model output must not diverge from what
+    // we independently derived.
+    if (expectedFacts?.upstream) {
+      for (const key of SHELL_PATH_PARAMS) {
+        const param = result.parameters[key];
+        const expected = expectedFacts.upstream[key];
+        if (param && typeof param.value === 'string' && expected !== undefined && param.value !== expected) {
+          errors.push({
+            check: `${key}-fact-match`,
+            path: `/parameters/${key}/value`,
+            message: `${key} "${param.value}" does not match expected upstream fact "${expected}"`,
+          });
+        }
       }
     }
   }

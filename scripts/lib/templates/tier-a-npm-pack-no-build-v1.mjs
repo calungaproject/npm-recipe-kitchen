@@ -1,5 +1,12 @@
 export const TEMPLATE_ID = 'tier-a-npm-pack-no-build-v1';
 
+// A safe intra-package relative path: one or more `/`-joined segments of
+// [A-Za-z0-9._-]. No leading slash, no whitespace, no shell metacharacters,
+// and (critically) no newlines — these values are interpolated into the
+// generated build/smoke shell scripts, so anything outside this set could
+// inject commands. `..` traversal is additionally rejected by the validator.
+export const SAFE_REL_PATH_RE = /^[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)*$/;
+
 export const PARAM_SPEC = {
   package_name:         { type: 'string',  required: true,  maxLength: 214 },
   package_version:      { type: 'string',  required: true,  maxLength: 256 },
@@ -9,8 +16,8 @@ export const PARAM_SPEC = {
   source_tag:           { type: 'string',  required: true,  maxLength: 100 },
   upstream_npm_version: { type: 'string',  required: true,  maxLength: 256 },
   has_cli:              { type: 'boolean', required: true },
-  cli_bin_path:         { type: 'string',  required: false, maxLength: 200 },
-  main_entry:           { type: 'string',  required: true,  maxLength: 200 },
+  cli_bin_path:         { type: 'string',  required: false, maxLength: 200, pattern: SAFE_REL_PATH_RE },
+  main_entry:           { type: 'string',  required: true,  maxLength: 200, pattern: SAFE_REL_PATH_RE },
 };
 
 export function generateManifest(p) {

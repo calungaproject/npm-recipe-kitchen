@@ -32,25 +32,25 @@ then verify both the module API (`semver.satisfies`, `semver.valid`) and the CLI
 
 Network required while packaging: No
 Network required while smoke-testing: Yes (npm install fetches tarball into the temp prefix)
-Pinned npm-registry contract SHA: pending — complete Gate A steps 1–3 (pin a read-only
-registry checkout and create the test/fixtures/registry-contract/ snapshot) before
-filling this field.
+Pinned npm-registry contract SHA: 017ebd5a3c5fef6d595f7c852fd584a7d5fae255
 Factory builder ownership: external pipeline pin; no per-package builder field
 Declared output path: out/semver-7.7.2.tgz (factory convention)
-Builder assumption still unresolved after reading the pinned contract: pending —
-requires reading .tekton/ pipeline definitions in the pinned registry checkout to
-determine whether the builder image/digest is externally pinned or per-recipe.
+Builder assumption still unresolved after reading the pinned contract: confirmed resolved.
+The builder image is pinned externally in .tekton/calunga-npm-registry-main-pull-request.yaml
+via the builder-image param (quay.io/redhat-user-workloads/calunga-tenant/npm-builder@sha256:c3511cd1e8cd4f1845be52ebe1e938e9e08d2fc802036793b1afae4fec82c834).
+Per-package manifests do not carry a builder field. This matches the golden recipe design.
 
 Upstream npm provenance state: SLSA v1 provenance attestation present
 Evidence source and retrieval date: npm view semver@7.7.2 --json, 2026-08-13
 Could not verify: did not independently verify the SLSA attestation signature chain
 
-Tag vs commit SHA decision: source.ref uses the tag v7.7.2 rather than the commit
-SHA. The factory considers tags immutable within the npm-registry workflow. The build
-entrypoint independently verifies that the cloned HEAD matches the expected commit SHA
-281055e7716ef0415a8826972471331989ede58c, so a moved or deleted tag would cause a
-build failure. Revisit whether source.ref should carry the commit SHA directly once the
-registry contract compatibility question is resolved.
+Tag vs commit SHA decision: source.ref now carries the immutable commit SHA
+281055e7716ef0415a8826972471331989ede58c with ref_type "commit". The tag v7.7.2 is
+retained only in this evidence document. Existing Express recipes in npm-registry use
+tags (ref_type "tag"), so this is a conscious compatibility divergence: the PoC
+prioritizes immutability over convention. The registry schema accepts both forms
+(source.ref is a free string, ref_type is optional). The build entrypoint uses
+git clone --no-checkout followed by git checkout of the exact SHA.
 
 Refusal/stop conditions:
 - source commit does not equal the pinned SHA;
