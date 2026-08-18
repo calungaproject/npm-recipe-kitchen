@@ -5,7 +5,11 @@
 # See ADR 0033 for details.
 version: "1"
 kill_switch: false
-roles: []
+# The custom npm-recipe-draft harness dispatches as role `coder`, so that role
+# must be declared here for the mint service to issue its token.
+# Stock agents (triage/retro/etc.) remain intentionally stripped.
+roles:
+    - coder
 agents:
     - name: npm-recipe-draft
       source: harness/npm-recipe-draft.yaml
