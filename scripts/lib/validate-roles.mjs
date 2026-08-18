@@ -87,12 +87,31 @@ function parseScalar(text, key) {
   return first ?? null;
 }
 
+// Roles the stock reusable dispatch workflow mints regardless of any custom
+// harness. These are not tied to a repo harness file, so the harness-vs-config
+// check below cannot see them: the stock Review job runs on every PR and mints
+// a `review` token, and PR #5's first fix (restoring only `coder`) still 502'd
+// there until `review` was declared too. Keep this in sync with the stock jobs
+// that run for this repo's events.
+export const REQUIRED_STOCK_ROLES = ['review'];
+
 // Core check, decoupled from the filesystem for testing. `readHarness(source)`
 // returns the text of a harness file given its config-relative `source:` path.
 export function checkRoleConsistency(configText, readHarness) {
   const errors = [];
   const declared = parseList(configText, 'roles') ?? [];
   const declaredSet = new Set(declared);
+
+  for (const role of REQUIRED_STOCK_ROLES) {
+    if (!declaredSet.has(role)) {
+      errors.push(
+        `stock pipeline role "${role}" is not declared in .fullsend/config.yaml ` +
+          `roles: [${declared.join(', ')}]. The stock dispatch workflow mints this ` +
+          `role independently of any harness; add "${role}" to roles, or the mint ` +
+          `service will fail with a 502 when issuing its token.`,
+      );
+    }
+  }
 
   for (const source of parseScalarAll(configText, 'source')) {
     let harnessText;

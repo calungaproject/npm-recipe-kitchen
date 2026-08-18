@@ -5,6 +5,7 @@ import {
   parseScalarAll,
   checkRoleConsistency,
   validateRoles,
+  REQUIRED_STOCK_ROLES,
 } from '../scripts/lib/validate-roles.mjs';
 
 describe('parseList', () => {
@@ -53,7 +54,7 @@ describe('checkRoleConsistency', () => {
   };
 
   it('flags a harness role missing from config roles', () => {
-    const config = 'roles: []\nagents:\n    - name: x\n      source: harness/x.yaml\n';
+    const config = 'roles:\n    - review\nagents:\n    - name: x\n      source: harness/x.yaml\n';
     const errors = checkRoleConsistency(config, read);
     assert.strictEqual(errors.length, 1);
     assert.match(errors[0], /role "coder"/);
@@ -61,15 +62,27 @@ describe('checkRoleConsistency', () => {
   });
 
   it('passes when the role is declared', () => {
-    const config = 'roles:\n    - coder\nagents:\n    - name: x\n      source: harness/x.yaml\n';
+    const config = 'roles:\n    - coder\n    - review\nagents:\n    - name: x\n      source: harness/x.yaml\n';
     assert.deepStrictEqual(checkRoleConsistency(config, read), []);
   });
 
   it('reports a harness that cannot be read', () => {
-    const config = 'roles:\n    - coder\nagents:\n    - name: y\n      source: harness/missing.yaml\n';
+    const config = 'roles:\n    - coder\n    - review\nagents:\n    - name: y\n      source: harness/missing.yaml\n';
     const errors = checkRoleConsistency(config, read);
     assert.strictEqual(errors.length, 1);
     assert.match(errors[0], /could not be read/);
+  });
+
+  it('flags a stock pipeline role missing from config roles', () => {
+    const config = 'roles:\n    - coder\nagents:\n    - name: x\n      source: harness/x.yaml\n';
+    const errors = checkRoleConsistency(config, read);
+    assert.strictEqual(errors.length, 1);
+    assert.match(errors[0], /stock pipeline role "review"/);
+    assert.match(errors[0], /not declared/);
+  });
+
+  it('includes review among the required stock roles', () => {
+    assert.ok(REQUIRED_STOCK_ROLES.includes('review'));
   });
 });
 
