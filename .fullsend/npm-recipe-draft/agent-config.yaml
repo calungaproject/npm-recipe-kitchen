@@ -15,14 +15,15 @@
 name: npm-recipe-draft
 description: Draft npm package onboarding recipes (Tier A, no-build)
 
-# The trigger restricts to issue_comment events matching the /fs-onboard pattern.
-# Platform authorization (write-level collaborator permission) is enforced by
-# Fullsend's reusable-dispatch workflow before this agent is invoked.
-trigger:
-  event: issue_comment
-  pattern: "/fs-onboard"
+# Dispatch selection is driven by the CEL `trigger` in the harness file
+# (.fullsend/harness/npm-recipe-draft.yaml), which is the single source of
+# truth. Platform authorization (write-level collaborator permission) is
+# enforced by Fullsend's reusable-dispatch workflow before this agent is
+# invoked.
 
-# Input validation: the agent accepts only a bounded package identity.
+# Input validation: the agent accepts only a bounded package identity,
+# resolved from event.transition.comment.instruction (the text after the
+# /fs-onboard command).
 input:
   format: "name@version"
   pattern: "^(@[a-z0-9][a-z0-9._-]*/)?[a-z0-9][a-z0-9._-]*@\\d+\\.\\d+\\.\\d+$"

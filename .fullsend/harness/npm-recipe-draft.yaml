@@ -3,3 +3,14 @@
 # The `agent` field points to the agent directory relative to .fullsend/.
 agent: npm-recipe-draft
 role: coder
+
+# Dispatch trigger: a CEL expression over NormalizedEvent.
+# fullsend dispatch only selects a harness whose trigger is a non-empty CEL
+# expression; a harness with no trigger is manual-run-only and is excluded
+# from dispatch (see ADR 0061 / CEL Triggers Reference, v0.36.0).
+# This selects the /fs-onboard command comment on a work item.
+trigger: >
+  event.transition.kind == "comment_added"
+    && has(event.transition.comment.command)
+    && event.transition.comment.command == "/fs-onboard"
+    && event.entity.kind == "work_item"
