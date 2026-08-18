@@ -5,7 +5,16 @@
 # See ADR 0033 for details.
 version: "1"
 kill_switch: false
-roles: []
+# Every role the dispatch pipeline mints a token for must be declared here, or
+# the mint service returns HTTP 502 (backend crash, not a clean 403).
+# - `coder`: the custom npm-recipe-draft harness dispatches as this role.
+# - `review`: the stock Review job in the reusable dispatch workflow runs on
+#   every PR and mints a `review` token, independent of custom agents.
+# Stock *agents* (triage/retro/etc.) remain intentionally stripped; that is
+# separate from the roles the pipeline itself requires.
+roles:
+    - coder
+    - review
 agents:
     - name: npm-recipe-draft
       source: harness/npm-recipe-draft.yaml
