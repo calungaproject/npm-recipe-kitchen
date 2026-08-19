@@ -7,10 +7,70 @@
 agent: npm-recipe-draft/CLAUDE.md
 role: coder
 
+# Model access. Without this the sandbox has no LLM credentials and Claude Code
+# exits immediately with "Not logged in · Please run /login" (0 tokens, ~1s),
+# producing no recipe-result.json. The stock code/review agents get this from
+# their URL-sourced fullsend-ai/agents harness; a LOCAL harness must declare it
+# itself. See building-custom-agents.md ("Agent crashes immediately (0s
+# runtime) → sandbox can't authenticate to Vertex AI").
+#
+# `vertex-ai` resolves to .fullsend/providers/vertex-ai.yaml, whose profile
+# (.fullsend/profiles/fullsend-vertex-ai.yaml) opens sandbox egress to
+# api.anthropic.com + *.googleapis.com. providers/ and profiles/ are NOT in the
+# dispatch layered-dirs set, so these files are shipped in-repo, not injected.
+providers:
+    - vertex-ai
+
+# GCP Vertex credentials, mounted into the sandbox. The runner's Setup GCP step
+# (WIF) exports GOOGLE_APPLICATION_CREDENTIALS / GCP_OIDC_TOKEN_FILE and
+# ANTHROPIC_VERTEX_PROJECT_ID / CLOUD_ML_REGION / GOOGLE_CLOUD_PROJECT; the
+# .env.d file (expand: true) is templated from those and enables Vertex mode.
+#
+# The final entry delivers the agent's INPUT: the pre-computed deterministic
+# facts file produced by pre_script (below). host_files copies runner files into
+# the sandbox AFTER the pre-script has run (run.go bootstrap order), so the file
+# is present by copy time. `src` is expanded with the runner PROCESS env
+# (os.ExpandEnv), which does NOT see env.runner values — so the path is a literal
+# shared verbatim with pre-recipe-facts.sh rather than an env indirection. The
+# agent reads it at the sandbox path exported as $RECIPE_INPUT_FILE (env.sandbox).
+host_files:
+    - src: env/gcp-vertex.env
+      dest: /sandbox/workspace/.env.d/gcp-vertex.env
+      expand: true
+    - src: ${GOOGLE_APPLICATION_CREDENTIALS}
+      dest: /tmp/.gcp-credentials.json
+    - src: ${GCP_OIDC_TOKEN_FILE}
+      dest: /sandbox/workspace/.gcp-oidc-token
+      optional: true
+    - src: /tmp/fullsend-npm-recipe-draft/recipe-input.json
+      dest: /sandbox/workspace/recipe-input.json
+
+# Pre-script: the deterministic FACT PROVISIONER. Runs on the RUNNER (outside the
+# sandbox) BEFORE the sandbox is created; a non-zero exit aborts the run. It
+# resolves the target package identity (from RECIPE_PACKAGE or the /fs-onboard
+# comment) and writes the pre-computed facts (git URL, immutable source SHA,
+# provenance) to the fixed path the host_files entry above copies in. This is
+# what makes the agent's "facts come from pre-computed deterministic facts"
+# contract real: the sandboxed, credential-less agent receives the facts as data
+# and never fabricates them. An unknown/invalid package yields facts_available:
+# false so the agent emits needs_human; only genuine infra faults fail the run.
+#
+# Like post_script, the path must live under .fullsend/ (traversal guard) and the
+# script derives the repo root from its own location to reach scripts/lib/*.mjs.
+pre_script: npm-recipe-draft/pre-recipe-facts.sh
+
 # Agent output filename. Exported into the sandbox so the agent writes to
 # $FULLSEND_OUTPUT_DIR/recipe-result.json, and read back by the post-script.
-runner_env:
-    FULLSEND_OUTPUT_FILE: recipe-result.json
+# runner_env is deprecated (ADR 0055); use env.runner.
+#
+# env.sandbox exports RECIPE_INPUT_FILE so the agent references the input by
+# variable instead of hard-coding the sandbox path (buildSandboxEnvLines, ADR
+# 0055). It must match the host_files `dest` above.
+env:
+    runner:
+        FULLSEND_OUTPUT_FILE: recipe-result.json
+    sandbox:
+        RECIPE_INPUT_FILE: /sandbox/workspace/recipe-input.json
 
 # Deterministic safety gate. Runs on the RUNNER (outside the sandbox) after the
 # agent exits, with cwd = the run directory. Fullsend blocks the result (marks
