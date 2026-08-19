@@ -23,17 +23,26 @@ REPO_ROOT="$(cd -- "${script_dir}/../.." && pwd)"
 result_name="${FULLSEND_OUTPUT_FILE:-recipe-result.json}"
 
 # Locate the agent's result file. Prefer the iteration fullsend validated;
-# fall back to scanning iteration-*/output (last wins); finally try
-# FULLSEND_OUTPUT_DIR for local/manual runs.
+# fall back to scanning iteration-*/output and picking the numerically highest
+# (latest) iteration; finally try FULLSEND_OUTPUT_DIR for local/manual runs.
 result_file=""
 if [[ -n "${FULLSEND_VALIDATED_ITERATION_DIR:-}" && -f "${FULLSEND_VALIDATED_ITERATION_DIR}/${result_name}" ]]; then
     result_file="${FULLSEND_VALIDATED_ITERATION_DIR}/${result_name}"
 else
+    # nullglob so a no-match glob expands to nothing rather than the literal
+    # pattern; select the highest iteration number so iteration-10 beats
+    # iteration-9 (lexicographic "last wins" would pick iteration-9).
+    shopt -s nullglob
+    latest_iter=-1
     for dir in iteration-*/output; do
-        if [[ -f "${dir}/${result_name}" ]]; then
+        iter_num="${dir%/output}"
+        iter_num="${iter_num#iteration-}"
+        if [[ "${iter_num}" =~ ^[0-9]+$ && -f "${dir}/${result_name}" && "${iter_num}" -gt "${latest_iter}" ]]; then
+            latest_iter="${iter_num}"
             result_file="${dir}/${result_name}"
         fi
     done
+    shopt -u nullglob
     if [[ -z "${result_file}" && -n "${FULLSEND_OUTPUT_DIR:-}" && -f "${FULLSEND_OUTPUT_DIR}/${result_name}" ]]; then
         result_file="${FULLSEND_OUTPUT_DIR}/${result_name}"
     fi
@@ -66,10 +75,18 @@ try {
 
 // The agent runs in an untrusted sandbox; treat its output as untrusted input.
 // Branch on the declared status so needs_human results are held to their own
-// contract (reason + escalation_target, no drafted fields).
-const validation = result.status === 'needs_human'
-  ? validateNeedsHumanResult(result)
-  : validateRecipeResult(result);
+// contract (reason + escalation_target, no drafted fields). Any status other
+// than the two we recognize is rejected outright rather than validated as a
+// drafted result.
+let validation;
+if (result.status === 'needs_human') {
+  validation = validateNeedsHumanResult(result);
+} else if (result.status === 'drafted') {
+  validation = validateRecipeResult(result);
+} else {
+  console.error(`[post-validate] FAILED: unknown result.status ${JSON.stringify(result.status)} — expected "drafted" or "needs_human"`);
+  process.exit(1);
+}
 
 if (!validation.valid) {
   console.error('[post-validate] FAILED:');
