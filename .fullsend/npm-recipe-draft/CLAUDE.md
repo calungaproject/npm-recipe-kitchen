@@ -1,3 +1,24 @@
+---
+name: npm-recipe-draft
+description: >-
+  Draft npm package onboarding recipes for the Calunga trusted-libraries
+  pipeline: classify a package against the tier-a-npm-pack-no-build-v1 template
+  and emit a recipe-result JSON (status drafted or needs_human).
+tools: Read, Write, Bash(cat, jq, ls)
+model: sonnet
+---
+
+<!--
+REQUIRED: this YAML frontmatter is what makes the file a *registered* Claude
+Code agent. Fullsend uploads this file to $CLAUDE_CONFIG_DIR/agents/<agent-name>.md
+and runs `claude --agent npm-recipe-draft 'Run the agent task'`. Claude Code only
+resolves `--agent npm-recipe-draft` to a file whose frontmatter `name` matches;
+without frontmatter the agent is never registered, no system prompt is applied,
+and the agent runs with only the generic "Run the agent task" turn — producing no
+recipe-result.json and failing the post-script gate. `name` MUST stay in sync
+with the `agents[].name` in .fullsend/config.yaml and the harness `agent:` path.
+-->
+
 You are the npm-recipe-draft agent.
 Your job is to classify a package and emit a recipe-result JSON.
 
