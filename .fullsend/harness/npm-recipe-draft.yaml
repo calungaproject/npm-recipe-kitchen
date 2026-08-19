@@ -27,12 +27,26 @@ providers:
 # .env.d file (expand: true) is templated from those and enables Vertex mode.
 #
 # The final entry delivers the agent's INPUT: the pre-computed deterministic
-# facts file produced by pre_script (below). host_files copies runner files into
-# the sandbox AFTER the pre-script has run (run.go bootstrap order), so the file
-# is present by copy time. `src` is expanded with the runner PROCESS env
-# (os.ExpandEnv), which does NOT see env.runner values — so the path is a literal
-# shared verbatim with pre-recipe-facts.sh rather than an env indirection. The
-# agent reads it at the sandbox path exported as $RECIPE_INPUT_FILE (env.sandbox).
+# facts file produced by pre_script (below).
+#
+# CRITICAL ORDERING (verified against fullsend v0.36.0 via `fullsend run`):
+# host_files are validated (stat each `src`) BEFORE the pre-script runs, but
+# copied into the sandbox AFTER it runs. The two phases are:
+#   1. "validating files"  — stat every src        (BEFORE pre-script)
+#   2. "Running pre-script" — writes recipe-input.json
+#   3. "Creating sandbox"   — copies host_files in  (AFTER pre-script)
+# Because the file does not exist yet at phase 1, this entry MUST be
+# `optional: true`, or the run dies with
+#   "validating files: host_files[N].src: stat .../recipe-input.json: no such file or directory".
+# optional skips the phase-1 existence check; the pre-script then creates the
+# file, and phase 3 copies the now-present file in. (Earlier revisions of this
+# comment wrongly claimed validation happened after the pre-script — it does
+# not; that mistaken assumption is what kept breaking this run.)
+#
+# `src` is expanded with the runner PROCESS env (os.ExpandEnv), which does NOT
+# see env.runner values — so the path is a literal shared verbatim with
+# pre-recipe-facts.sh rather than an env indirection. The agent reads it at the
+# sandbox path exported as $RECIPE_INPUT_FILE (env.sandbox).
 host_files:
     - src: env/gcp-vertex.env
       dest: /sandbox/workspace/.env.d/gcp-vertex.env
@@ -44,6 +58,7 @@ host_files:
       optional: true
     - src: /tmp/fullsend-npm-recipe-draft/recipe-input.json
       dest: /sandbox/workspace/recipe-input.json
+      optional: true
 
 # Pre-script: the deterministic FACT PROVISIONER. Runs on the RUNNER (outside the
 # sandbox) BEFORE the sandbox is created; a non-zero exit aborts the run. It
