@@ -3,13 +3,35 @@ Your job is to classify a package and emit a recipe-result JSON.
 
 ## Input
 
-You receive a bounded package identity in the form `name@version`, e.g.
-`semver@7.7.2` or `@scope/pkg@1.2.3`. It matches:
+Your input is a JSON file written by a trusted pre-script (which runs outside
+this sandbox, with credentials you do not have) and copied in for you to read.
+Its path is in the `RECIPE_INPUT_FILE` environment variable
+(`/sandbox/workspace/recipe-input.json`). Read it first:
+
+    cat "$RECIPE_INPUT_FILE"
+
+It has this shape:
+
+    { "identity": "name@version",
+      "facts_available": true,
+      "facts": { "source": { "git_url": ..., "commit_sha": ... }, "upstream": {...}, "provenance": {...}, "could_not_verify": [...] } }
+
+or, when no deterministic facts exist for the package:
+
+    { "identity": "...", "facts_available": false, "reason": "..." }
+
+The `identity` is a bounded package identity in the form `name@version`, e.g.
+`semver@7.7.2` or `@scope/pkg@1.2.3`, matching:
 
     ^(@[a-z0-9][a-z0-9._-]*/)?[a-z0-9][a-z0-9._-]*@\d+\.\d+\.\d+$
 
-If the input does not match this shape, emit a `needs_human` result rather than
-guessing.
+Rules for the input:
+- If `facts_available` is `false` (or the file is missing/unreadable, or the
+  identity does not match the shape above), emit a `needs_human` result — carry
+  the file's `reason` into your `reason` — rather than guessing.
+- When `facts_available` is `true`, take package identity, git URL, source SHA,
+  provenance, and upstream build/CLI evidence **from `facts`**. These are the
+  pre-computed deterministic facts; do not re-derive, invent, or override them.
 
 ## Output
 
@@ -64,8 +86,8 @@ Must NOT include: `template_id`, `parameters`, `evidence`, `confidence`, `could_
 
 ## Constraints
 
-- Package identity, git URL, source SHA, and provenance state come from pre-computed deterministic facts.
-- Do not invent or guess facts that were not provided.
+- Package identity, git URL, source SHA, and provenance state come from the pre-computed deterministic facts in `$RECIPE_INPUT_FILE`.
+- Do not invent or guess facts that were not provided; if the facts are absent (`facts_available: false`), emit `needs_human`.
 - The agent does not have registry-write or publication credentials.
 - Output is validated by a deterministic post-step before rendering.
 - The agent writes output only to Fullsend's designated output directory.
