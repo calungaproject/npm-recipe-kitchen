@@ -39,7 +39,13 @@ It has this shape:
 
 or, when no deterministic facts exist for the package:
 
-    { "identity": "...", "facts_available": false, "reason": "..." }
+    { "identity": "...", "facts_available": false, "reason_code": "<STABLE_CODE>", "reason": "..." }
+
+The `facts_available: false` form may additionally carry `input_error: true` (a
+missing/invalid requested identity) or `blocked: true` (the registry contract
+input was unavailable). Both remain `needs_human` cases for you — the
+`reason_code` is a stable machine-readable code you should carry through
+alongside the human-readable `reason`.
 
 The `identity` is a bounded package identity in the form `name@version`, e.g.
 `semver@7.7.2` or `@scope/pkg@1.2.3`, matching:

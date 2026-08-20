@@ -1,5 +1,6 @@
 node_modules/
 demo/output/
+demo/audit/
 coverage/
 .env
 .env.*

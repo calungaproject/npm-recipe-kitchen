@@ -18,10 +18,52 @@ This repository consumes that order; it does not discover, score, or re-prioriti
 
 Between in and out sit two deterministic, non-model gates:
 
-- **Validation** (`scripts/lib/recipe-validator.mjs`) checks a recipe-result against the schema, the known package facts, the template allowlist, the source-SHA match, and parameter safety before anything is rendered.
+- **Validation** (`scripts/lib/recipe-validator.mjs`) checks a recipe-result against the schema, the trusted fact bundle, the template allowlist, the source-SHA match, and parameter safety before anything is rendered.
 - **Rendering** (`scripts/lib/renderer.mjs`) turns a validated `drafted` result into the four fixed files, and refuses unsupported templates, arbitrary paths, shell injection, path traversal, symlinks, control characters, unknown parameters, oversized values, and `needs_human` input.
 
 Every drafted bundle is then reviewed by a human before anything further happens.
+
+## Facts: verified, on-demand fact bundles
+
+Facts about a candidate are not a hand-maintained map.
+For an **exact** npm identity (`name@1.2.3` or `@scope/name@1.2.3`) the on-demand collector (`scripts/lib/compute-facts.mjs`) produces a versioned, trusted **fact bundle** by inspecting real evidence, behind injected IO adapters (`scripts/lib/adapters/npm-adapters.mjs`) so the default test suite is hermetic.
+Ranges, dist-tags, incomplete versions, and git/registry URLs are rejected as invalid identities — never coerced into a version.
+Reviewed exceptions still live in `scripts/lib/facts.mjs` (`KNOWN_FACTS`) as explicit `manual_override` bundles; they short-circuit collection and carry their own reviewed registry-contract SHA.
+
+### Two separate trust questions
+
+The npm **artifact** and the **source** repository are distinct trust questions and are never conflated:
+
+- **Artifact integrity** — the tarball bytes are downloaded under strict size/time limits and verified against `dist.integrity`; the tarball's own `package.json` and file list are inspected directly. Registry metadata is never treated as proof of tarball contents.
+- **Source association** — `git ls-remote` resolves the version tag to an immutable commit. That mapping is `tag_only`: it proves tag→commit, **not** that the published tarball was built from that commit. Under the default policy `tag_only` does **not** become a verified source link — it yields `needs_human` (or, only with an explicit opt-in policy, a bundle carrying a `could_not_verify` caveat). Only cryptographically **verified provenance** (or a reviewed manual override) establishes an authoritative `verified_provenance` link.
+
+Provenance/signature statuses are recorded as `verified` / `unverified` / `absent` and are never asserted `verified` unless an adapter actually verified them; the default provenance adapter is intentionally conservative and never returns `verified`.
+
+### Tier A eligibility
+
+A bundle is Tier A eligible only from **inspected** evidence (both the pinned source checkout and the produced tarball), never from the mere absence of registry fields: no build/install lifecycle scripts, no `binding.gyp` or native artifacts, an unambiguous single entrypoint present in the tarball, at most one CLI bin (present in the tarball), and a packed name/version matching the request.
+The CLI command name may differ from the bin file's basename, so it is carried explicitly and never guessed.
+
+### Failure taxonomy (load-bearing)
+
+- **Package / policy / input / blocked** outcomes are bounded: the collector returns a stable `reason_code` and the pre-script writes `facts_available: false`, exit 0, so the agent emits `needs_human` — a successful, bounded refusal.
+  A missing/invalid **identity** is an `input_error` (never asks the model to fabricate an identity); a missing registry-contract SHA is `blocked`.
+- **Operational** faults (timeout, DNS/TLS, HTTP 429/5xx, truncation/oversize, invalid JSON, unrelated child-process failure) throw `OperationalError` → the pre-script exits non-zero → the run **fails as retryable infrastructure**. Infra faults must never masquerade as `needs_human`.
+
+### Runner-side enforcement (Gate 0)
+
+The post-step (`scripts/lib/post-validate.mjs`, invoked by `post-recipe-validate.sh`) loads the **exact** fact bundle the pre-script produced — never a silently recomputed set — and both **validates against** and **renders from** it.
+The model is authoritative only for a bounded `description` and its own evidence; every authoritative parameter (identity, source URL/ref/tag, upstream npm version, `has_cli`, CLI bin path/name incl. required absence, main entry, selected template) is re-derived from the bundle via `scripts/lib/fact-bundle.mjs`.
+A `drafted` result is therefore impossible when facts are unavailable, the bundle is invalid, the model changed or omitted an authoritative value, or the selected template differs from the bundle's eligibility template.
+
+### Registry contract and audit artifact
+
+- The **registry-contract SHA** is a pinned, read-only Gate A input (`scripts/lib/registry-contract.mjs`), established out-of-band and validated as a full 40-hex commit SHA. It is never derived from npm metadata; when unavailable the collector blocks rather than inventing one. The kitchen only reads it — it never writes to `npm-registry`.
+- The exact fact bundle used for inference/validation is persisted as a reviewable, **kitchen-side** audit artifact (`demo/audit/<name>/<version>/fact-bundle.json`). It is never part of the rendered recipe bundle that becomes a registry PR diff.
+
+### Fullsend's restricted role
+
+Fullsend (the sandboxed model) is restricted to **judgment**: given the trusted bundle and the template allowlist it selects a template (or emits `needs_human`). It never resolves identity, fetches facts, or produces authoritative values.
 
 ## Boundary: what this repository does NOT do
 

@@ -65,84 +65,43 @@ if [[ -z "${result_file}" ]]; then
     exit 1
 fi
 
-echo "[post-validate] Validating ${result_file}"
+# The EXACT fact bundle the pre-script produced for inference. Reading this same
+# file (rather than recomputing facts) is what makes trusted-fact enforcement
+# real: validation and rendering are bound to the facts the agent actually saw.
+# This is the fixed runner path the pre-script wrote and host_files copied in.
+INPUT_FILE="${RECIPE_INPUT_FILE_RUNNER:-/tmp/fullsend-npm-recipe-draft/recipe-input.json}"
 
-REPO_ROOT="${REPO_ROOT}" RESULT_FILE="${result_file}" node --input-type=module <<'VALIDATE_EOF'
-import { readFileSync } from 'node:fs';
+echo "[post-validate] Validating ${result_file} against fact bundle ${INPUT_FILE}"
+
+REPO_ROOT="${REPO_ROOT}" RESULT_FILE="${result_file}" INPUT_FILE="${INPUT_FILE}" \
+    node --input-type=module <<'VALIDATE_EOF'
 import { pathToFileURL } from 'node:url';
 
 const repoRoot = process.env.REPO_ROOT;
 const resultPath = process.env.RESULT_FILE;
+const inputPath = process.env.INPUT_FILE;
 
-async function render(result) {
-  // Render only drafted results. A needs_human result carries no
-  // template_id/parameters to materialise — validation passing IS its whole
-  // outcome — so there is nothing to render and we leave the tree untouched.
-  if (result.status !== 'drafted') {
-    console.log(`[post-validate] status=${result.status}: no files to render`);
-    return;
-  }
-  // The renderer re-checks parameters and paths itself, but by this point the
-  // deterministic validator has already accepted the result, so we render the
-  // recipe files into the repo working tree (demo/output/fullsend/<name>/<version>).
-  // Those written files are the diff fullsend turns into the PR.
-  const rendererUrl = pathToFileURL(`${repoRoot}/scripts/lib/renderer.mjs`).href;
-  const { render: renderRecipe, RenderError } = await import(rendererUrl);
-  try {
-    const rendered = renderRecipe(result, repoRoot);
-    console.log(`[post-validate] Rendered ${rendered.files.length} file(s) to ${rendered.output_dir}`);
-    for (const f of rendered.files) {
-      console.log(`  - ${f}`);
-    }
-  } catch (err) {
-    if (err instanceof RenderError) {
-      console.error(`[post-validate] FAILED: render rejected the recipe — ${err.message}`);
-    } else {
-      console.error(`[post-validate] FAILED: unexpected render error — ${err.stack || err.message}`);
-    }
-    process.exit(1);
-  }
-}
+const modUrl = pathToFileURL(`${repoRoot}/scripts/lib/post-validate.mjs`).href;
+const { runPostValidation } = await import(modUrl);
 
-const validatorUrl = pathToFileURL(`${repoRoot}/scripts/lib/recipe-validator.mjs`).href;
-const { validateRecipeResult, validateNeedsHumanResult } = await import(validatorUrl);
+const outcome = runPostValidation({ resultPath, inputPath, repoRoot });
 
-let result;
-try {
-  result = JSON.parse(readFileSync(resultPath, 'utf-8'));
-} catch (err) {
-  console.error(`[post-validate] FAILED: ${resultPath} is not valid JSON — ${err.message}`);
-  process.exit(1);
-}
-
-// The agent runs in an untrusted sandbox; treat its output as untrusted input.
-// Branch on the declared status so needs_human results are held to their own
-// contract (reason + escalation_target, no drafted fields). Any status other
-// than the two we recognize is rejected outright rather than validated as a
-// drafted result.
-let validation;
-if (result.status === 'needs_human') {
-  validation = validateNeedsHumanResult(result);
-} else if (result.status === 'drafted') {
-  validation = validateRecipeResult(result);
-} else {
-  console.error(`[post-validate] FAILED: unknown result.status ${JSON.stringify(result.status)} — expected "drafted" or "needs_human"`);
-  process.exit(1);
-}
-
-if (!validation.valid) {
-  console.error('[post-validate] FAILED:');
-  for (const e of validation.errors) {
+if (!outcome.ok) {
+  console.error(`[post-validate] FAILED (${outcome.reason_code}): ${outcome.message || ''}`);
+  for (const e of outcome.errors || []) {
     console.error(`  ${e.check || 'schema'}: ${e.path} — ${e.message}`);
   }
   process.exit(1);
 }
 
-console.log(`[post-validate] OK: status=${result.status}`);
-
-// Validation passed. Materialise the recipe files for drafted results so the
-// pipeline produces its output end-to-end; needs_human is skipped inside render().
-await render(result);
+console.log(`[post-validate] OK: status=${outcome.status}`);
+if (outcome.rendered) {
+  console.log(`[post-validate] Rendered ${outcome.rendered.files.length} file(s) to ${outcome.rendered.output_dir}`);
+  for (const f of outcome.rendered.files) console.log(`  - ${f}`);
+}
+if (outcome.audit_path) {
+  console.log(`[post-validate] Fact-bundle audit artifact: ${outcome.audit_path}`);
+}
 VALIDATE_EOF
 
 echo "[post-validate] Passed"

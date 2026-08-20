@@ -7,6 +7,12 @@ export const TEMPLATE_ID = 'tier-a-npm-pack-no-build-v1';
 // inject commands. `..` traversal is additionally rejected by the validator.
 export const SAFE_REL_PATH_RE = /^[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)*$/;
 
+// A safe CLI command (bin) name: a single [A-Za-z0-9._-] segment. The command
+// name may differ from the bin file's basename, so it is carried explicitly and
+// never guessed; it is interpolated into the smoke script and so is held to the
+// same no-metacharacter/no-newline discipline as the path parameters.
+export const SAFE_BIN_NAME_RE = /^[A-Za-z0-9._-]+$/;
+
 export const PARAM_SPEC = {
   package_name:         { type: 'string',  required: true,  maxLength: 214 },
   package_version:      { type: 'string',  required: true,  maxLength: 256 },
@@ -17,6 +23,7 @@ export const PARAM_SPEC = {
   upstream_npm_version: { type: 'string',  required: true,  maxLength: 256 },
   has_cli:              { type: 'boolean', required: true },
   cli_bin_path:         { type: 'string',  required: false, maxLength: 200, pattern: SAFE_REL_PATH_RE },
+  cli_bin_name:         { type: 'string',  required: false, maxLength: 100, pattern: SAFE_BIN_NAME_RE },
   main_entry:           { type: 'string',  required: true,  maxLength: 200, pattern: SAFE_REL_PATH_RE },
 };
 
@@ -123,7 +130,11 @@ echo "[build.entrypoint] Output: \${main_tgz}"
 export function generateVerifySmoke(p) {
   let cliTest = '';
   if (p.has_cli.value && p.cli_bin_path?.value) {
-    const binName = p.cli_bin_path.value.split('/').pop().replace(/\.js$/, '');
+    // The CLI command name may differ from the bin file's basename. Prefer the
+    // explicit, validated cli_bin_name; fall back to the basename only when no
+    // distinct name was recorded.
+    const binName = p.cli_bin_name?.value
+      ?? p.cli_bin_path.value.split('/').pop().replace(/\.[cm]?js$/, '');
     cliTest = `
 echo "[verify.smoke] Testing CLI"
 "\${tmpdir}/node_modules/.bin/${binName}" --help >/dev/null 2>&1 || {

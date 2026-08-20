@@ -53,54 +53,26 @@ fi
 
 echo "[pre-facts] resolved identity: ${IDENTITY:-<none>}"
 
-# Derive the facts from the repo's committed, deterministic facts module and
-# write the agent input file. Importing facts.mjs is INFRASTRUCTURE: a failure
-# there (missing module, syntax error) is a real setup fault and crashes the
-# pre-script via `set -e`. An invalid or unknown identity, by contrast, is a
-# legitimate business outcome that yields facts_available:false so the agent can
-# emit needs_human — it must not fail the run.
+# Pinned registry-contract input (Gate A). It is an explicit, read-only snapshot
+# of the target npm-registry manifest contract and is NEVER derived from npm
+# metadata. Point REGISTRY_CONTRACT_PROVENANCE at the reviewed provenance.json;
+# when unset the collector path blocks (reviewed KNOWN_FACTS overrides carry
+# their own reviewed SHA and are unaffected).
+export REGISTRY_CONTRACT_PROVENANCE="${REGISTRY_CONTRACT_PROVENANCE:-}"
+
+# Collect the facts via the on-demand collector (reviewed KNOWN_FACTS overrides
+# first, then live artifact + source verification) and write the agent input.
+#
+# Failure contract enforced inside collect-facts-cli.mjs:
+#   - OPERATIONAL faults (timeout, DNS/TLS, 429, 5xx, truncation/oversize,
+#     invalid JSON, unrelated child failure) exit non-zero and, via `set -e`,
+#     ABORT the run as a retryable infrastructure error.
+#   - Package/policy/input/blocked outcomes are written as facts_available:false
+#     (with a stable reason_code) and exit 0, so the agent emits a bounded
+#     needs_human rather than failing the run.
+# The module import itself is INFRASTRUCTURE; a load failure is a real setup
+# fault and correctly crashes the pre-script.
 REPO_ROOT="${REPO_ROOT}" IDENTITY="${IDENTITY}" INPUT_FILE="${INPUT_FILE}" \
-    node --input-type=module <<'FACTS_EOF'
-import { writeFileSync } from 'node:fs';
-import { pathToFileURL } from 'node:url';
-
-const repoRoot = process.env.REPO_ROOT;
-const identity = process.env.IDENTITY || '';
-const inputFile = process.env.INPUT_FILE;
-
-const factsUrl = pathToFileURL(`${repoRoot}/scripts/lib/facts.mjs`).href;
-const { getFacts, validateFacts } = await import(factsUrl);
-
-let payload;
-if (!identity) {
-  payload = {
-    identity: '',
-    facts_available: false,
-    reason: 'No package identity was provided to /fs-onboard (expected "name@version").',
-  };
-} else {
-  try {
-    const facts = getFacts(identity);
-    const check = validateFacts(facts);
-    if (!check.valid) {
-      payload = {
-        identity,
-        facts_available: false,
-        reason: `Pre-computed facts for ${identity} failed internal validation: ${check.errors.map(e => `${e.path} ${e.message}`).join('; ')}`,
-      };
-    } else {
-      payload = { identity, facts_available: true, facts };
-    }
-  } catch (err) {
-    // getFacts throws for invalid-shape or unknown-package identities. Both mean
-    // "we have no deterministic facts for this" — a needs_human case, not a run
-    // failure. Only the import above (infrastructure) is allowed to crash.
-    payload = { identity, facts_available: false, reason: err.message };
-  }
-}
-
-writeFileSync(inputFile, JSON.stringify(payload, null, 2) + '\n', 'utf-8');
-console.log(`[pre-facts] wrote ${inputFile} (facts_available=${payload.facts_available})`);
-FACTS_EOF
+    node "${REPO_ROOT}/scripts/lib/collect-facts-cli.mjs"
 
 echo "[pre-facts] done"

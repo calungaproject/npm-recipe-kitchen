@@ -1,3 +1,8 @@
+// Reviewed manual overrides. These are the exceptional / previously-approved
+// packages whose facts were established by human review rather than the on-demand
+// collector (scripts/lib/compute-facts.mjs). Each is marked explicitly with
+// `source.resolution_method: 'manual_override'` so downstream consumers can tell
+// an override-derived source association apart from a collector-verified one.
 const KNOWN_FACTS = new Map([
   ['chalk@5.3.0', {
     package_name: 'chalk',
@@ -8,6 +13,7 @@ const KNOWN_FACTS = new Map([
       commit_sha: '72c742d4716b1f94bb24bbda86d96fbb247ca646',
       tag: 'v5.3.0',
       tag_matches_version: true,
+      resolution_method: 'manual_override',
     },
     upstream: {
       has_build_step: false,
@@ -38,12 +44,14 @@ const KNOWN_FACTS = new Map([
       commit_sha: '281055e7716ef0415a8826972471331989ede58c',
       tag: 'v7.7.2',
       tag_matches_version: true,
+      resolution_method: 'manual_override',
     },
     upstream: {
       has_build_step: false,
       build_evidence: 'No build, prepare, prepack, or prepublishOnly script in package.json',
       pack_command: 'npm pack --ignore-scripts',
       has_cli: true,
+      cli_bin_name: 'semver',
       cli_bin_path: 'bin/semver.js',
       main_entry: 'index.js',
       runtime: 'CommonJS',

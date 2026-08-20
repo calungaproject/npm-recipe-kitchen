@@ -35,7 +35,13 @@ the agent lacks) resolves the target package and writes the pre-computed
 deterministic facts to a JSON file copied into the sandbox at
 `$RECIPE_INPUT_FILE` (`/sandbox/workspace/recipe-input.json`). The agent reads
 that file for identity, git URL, source SHA, provenance, and upstream evidence.
-When `facts_available` is `false`, the agent emits `needs_human`.
+
+The input has one of these shapes:
+
+- `{ "identity": "name@version", "facts_available": true, "facts": { ... } }` — a trusted fact bundle is present; draft from `facts` (never re-derive or override its values).
+- `{ "identity": "...", "facts_available": false, "reason_code": "<STABLE_CODE>", "reason": "..." }` — no usable facts; emit `needs_human` and carry the `reason` through. The optional `input_error: true` marks a missing/invalid identity, and `blocked: true` marks an unavailable registry contract; both are still `needs_human` for the agent.
+
+When `facts_available` is `false` (for any reason), the agent emits `needs_human` rather than guessing.
 
 ## Constraints
 
