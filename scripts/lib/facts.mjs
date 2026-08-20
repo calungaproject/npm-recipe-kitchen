@@ -1,4 +1,34 @@
 const KNOWN_FACTS = new Map([
+  ['chalk@5.3.0', {
+    package_name: 'chalk',
+    package_version: '5.3.0',
+    identity: 'chalk@5.3.0',
+    source: {
+      git_url: 'https://github.com/chalk/chalk.git',
+      commit_sha: '72c742d4716b1f94bb24bbda86d96fbb247ca646',
+      tag: 'v5.3.0',
+      tag_matches_version: true,
+    },
+    upstream: {
+      has_build_step: false,
+      build_evidence: 'No build, prepare, prepack, or prepublishOnly script in package.json',
+      pack_command: 'npm pack --ignore-scripts',
+      has_cli: false,
+      main_entry: 'source/index.js',
+      runtime: 'ESM',
+      dependencies_count: 0,
+      lifecycle_scripts: false,
+    },
+    provenance: {
+      slsa_attestation_present: false,
+      attestation_verified: false,
+    },
+    could_not_verify: [
+      'No SLSA provenance attestation found for this package version',
+    ],
+    native_tier: 'A',
+    registry_contract_sha: '67c20a7ebef70e7f3970a01f90fa210cb6860385',
+  }],
   ['semver@7.7.2', {
     package_name: 'semver',
     package_version: '7.7.2',

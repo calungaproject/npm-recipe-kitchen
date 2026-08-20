@@ -187,8 +187,8 @@ trap 'rm -rf "\${tmpdir}"' EXIT
 
 npm install --ignore-scripts --no-audit --no-fund --prefix "\${tmpdir}" "\${MAIN_PATH}"
 
-echo "[verify.smoke] Testing module require"
-node -e "require(process.argv[1])" "\${tmpdir}/node_modules/\${PACKAGE_NAME}"
+echo "[verify.smoke] Testing module import"
+node -e "import(process.argv[1]).catch(e => { console.error(e.message); process.exit(1) })" "\${tmpdir}/node_modules/\${PACKAGE_NAME}"
 ${cliTest}
 
 echo "[verify.smoke] OK"

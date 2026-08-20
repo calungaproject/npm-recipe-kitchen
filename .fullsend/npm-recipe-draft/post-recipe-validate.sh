@@ -85,7 +85,7 @@ async function render(result) {
   // The renderer re-checks parameters and paths itself, but by this point the
   // deterministic validator has already accepted the result, so we render the
   // recipe files into the repo working tree (demo/output/fullsend/<name>/<version>).
-  // Those written files are the diff fullsend turns into the draft PR.
+  // Those written files are the diff fullsend turns into the PR.
   const rendererUrl = pathToFileURL(`${repoRoot}/scripts/lib/renderer.mjs`).href;
   const { render: renderRecipe, RenderError } = await import(rendererUrl);
   try {
