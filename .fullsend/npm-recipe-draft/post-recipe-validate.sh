@@ -74,6 +74,36 @@ import { pathToFileURL } from 'node:url';
 const repoRoot = process.env.REPO_ROOT;
 const resultPath = process.env.RESULT_FILE;
 
+async function render(result) {
+  // Render only drafted results. A needs_human result carries no
+  // template_id/parameters to materialise — validation passing IS its whole
+  // outcome — so there is nothing to render and we leave the tree untouched.
+  if (result.status !== 'drafted') {
+    console.log(`[post-validate] status=${result.status}: no files to render`);
+    return;
+  }
+  // The renderer re-checks parameters and paths itself, but by this point the
+  // deterministic validator has already accepted the result, so we render the
+  // recipe files into the repo working tree (demo/output/fullsend/<name>/<version>).
+  // Those written files are the diff fullsend turns into the draft PR.
+  const rendererUrl = pathToFileURL(`${repoRoot}/scripts/lib/renderer.mjs`).href;
+  const { render: renderRecipe, RenderError } = await import(rendererUrl);
+  try {
+    const rendered = renderRecipe(result, repoRoot);
+    console.log(`[post-validate] Rendered ${rendered.files.length} file(s) to ${rendered.output_dir}`);
+    for (const f of rendered.files) {
+      console.log(`  - ${f}`);
+    }
+  } catch (err) {
+    if (err instanceof RenderError) {
+      console.error(`[post-validate] FAILED: render rejected the recipe — ${err.message}`);
+    } else {
+      console.error(`[post-validate] FAILED: unexpected render error — ${err.stack || err.message}`);
+    }
+    process.exit(1);
+  }
+}
+
 const validatorUrl = pathToFileURL(`${repoRoot}/scripts/lib/recipe-validator.mjs`).href;
 const { validateRecipeResult, validateNeedsHumanResult } = await import(validatorUrl);
 
@@ -109,6 +139,10 @@ if (!validation.valid) {
 }
 
 console.log(`[post-validate] OK: status=${result.status}`);
+
+// Validation passed. Materialise the recipe files for drafted results so the
+// pipeline produces its output end-to-end; needs_human is skipped inside render().
+await render(result);
 VALIDATE_EOF
 
 echo "[post-validate] Passed"
