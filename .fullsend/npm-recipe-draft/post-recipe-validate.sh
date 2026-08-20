@@ -20,6 +20,18 @@ set -euo pipefail
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd -- "${script_dir}/../.." && pwd)"
 
+# The runner-side validator depends on ajv (scripts/lib/validate.mjs), but the
+# managed fullsend workflow checks out the repo without installing node
+# dependencies and node_modules/ is gitignored, so ajv is absent here. Install
+# production deps on demand from the committed lockfile. Guard on ajv's presence
+# so repeat runs and local `fullsend run` (where deps already exist) skip the
+# network round-trip. --ignore-scripts keeps the install from executing package
+# lifecycle scripts inside this trusted gate.
+if [[ ! -d "${REPO_ROOT}/node_modules/ajv" ]]; then
+    echo "[post-validate] Installing validator dependencies in ${REPO_ROOT}"
+    (cd -- "${REPO_ROOT}" && npm ci --ignore-scripts --no-audit --no-fund --omit=dev)
+fi
+
 result_name="${FULLSEND_OUTPUT_FILE:-recipe-result.json}"
 
 # Locate the agent's result file. Prefer the iteration fullsend validated;
