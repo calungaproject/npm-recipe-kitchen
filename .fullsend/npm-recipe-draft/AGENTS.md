@@ -13,14 +13,19 @@ Classify whether a package matches the `tier-a-npm-pack-no-build-v1` template.
 
 Emit a JSON object conforming to `schemas/recipe-result.schema.json` with status `drafted` or `needs_human`.
 
+### every result (both statuses)
+
+Must include these top-level fields regardless of status: `schema_version` (the integer `1`), `package` (the `name@version` identity copied verbatim from the input), and `status`.
+Omitting `schema_version` or `package` fails deterministic schema validation and blocks the run.
+
 ### drafted output
 
-Must include: `template_id`, `parameters`, `evidence`, `confidence`, `could_not_verify`.
+Must additionally include: `template_id`, `parameters`, `evidence`, `confidence`, `could_not_verify`.
 Must NOT include: `reason`, `escalation_target`.
 
 ### needs_human output
 
-Must include: `reason`, `escalation_target`.
+Must additionally include: `reason`, `escalation_target`.
 Must NOT include: `template_id`, `parameters`, `evidence`, `confidence`, `could_not_verify`.
 
 ## Input

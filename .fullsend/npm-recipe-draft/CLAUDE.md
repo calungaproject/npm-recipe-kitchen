@@ -64,6 +64,32 @@ files — this JSON is your only output. It must conform to the
 deterministic post-step before anything is acted on; invalid output blocks the
 run.
 
+Every result — drafted or needs_human — must carry the top-level `schema_version` (integer `1`), `package` (the `name@version` identity, copied verbatim from the input), and `status`.
+Omitting `schema_version` or `package` fails the deterministic schema check and blocks the run.
+
+A drafted result has this shape:
+
+    {
+      "schema_version": 1,
+      "package": "semver@7.7.2",
+      "status": "drafted",
+      "template_id": "tier-a-npm-pack-no-build-v1",
+      "parameters": { "source_ref": { "type": "string", "value": "<40-char commit SHA>" }, "...": "..." },
+      "evidence": [ { "kind": "...", "detail": "..." } ],
+      "confidence": 0.9,
+      "could_not_verify": []
+    }
+
+A needs_human result has this shape:
+
+    {
+      "schema_version": 1,
+      "package": "semver@7.7.2",
+      "status": "needs_human",
+      "reason": "...",
+      "escalation_target": "..."
+    }
+
 Rules:
 - Emit only a reviewed `template_id` and bounded typed parameters.
 - `source.ref` must be the immutable commit SHA (40-char hex), not a tag.
@@ -95,14 +121,23 @@ Classify whether a package matches the `tier-a-npm-pack-no-build-v1` template.
 
 Emit a JSON object conforming to `schemas/recipe-result.schema.json` with status `drafted` or `needs_human`.
 
+### every result (both statuses)
+
+Must include these top-level fields regardless of status:
+- `schema_version`: the integer `1` (a literal, not a string).
+- `package`: the bounded package identity `name@version`, copied verbatim from the input `identity` (e.g. `semver@7.7.2`).
+- `status`: either `"drafted"` or `"needs_human"`.
+
+Omitting `schema_version` or `package` fails deterministic schema validation and blocks the run.
+
 ### drafted output
 
-Must include: `template_id`, `parameters`, `evidence`, `confidence`, `could_not_verify`.
+Must additionally include: `template_id`, `parameters`, `evidence`, `confidence`, `could_not_verify`.
 Must NOT include: `reason`, `escalation_target`.
 
 ### needs_human output
 
-Must include: `reason`, `escalation_target`.
+Must additionally include: `reason`, `escalation_target`.
 Must NOT include: `template_id`, `parameters`, `evidence`, `confidence`, `could_not_verify`.
 
 ## Constraints
