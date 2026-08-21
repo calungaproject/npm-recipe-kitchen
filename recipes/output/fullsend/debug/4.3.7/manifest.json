@@ -1,0 +1,24 @@
+{
+  "name": "debug",
+  "version": "4.3.7",
+  "description": "Lightweight JavaScript debugging utility modeled after Node.js core's debugging technique",
+  "native_tier": "A",
+  "source": {
+    "url": "https://github.com/debug-js/debug.git",
+    "ref": "bc60914816e5e45a5fff1cd638410438fc317521",
+    "ref_type": "commit"
+  },
+  "upstream_npm": {
+    "version": "4.3.7"
+  },
+  "entrypoint": "build.entrypoint.sh",
+  "smoke": "verify.smoke.sh",
+  "outputs": [
+    {
+      "id": "main",
+      "type": "npm-package",
+      "path": "out/debug-4.3.7.tgz",
+      "pulp_name": "debug"
+    }
+  ]
+}
