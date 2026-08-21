@@ -15,7 +15,7 @@ Steps:
    - `confidence`: numeric 0–1
    - `could_not_verify`: items that need human follow-up
 5. Validate the result against `schemas/recipe-result.schema.json` and the post-recipe validator.
-6. If valid and `drafted`, render output files using `scripts/lib/renderer.mjs` under `demo/output/fullsend/`.
+6. If valid and `drafted`, render output files using `scripts/lib/renderer.mjs` under `recipes/output/fullsend/`.
 7. Report the result. A `needs_human` is a successful bounded result, not a failure.
 
 Constraints:

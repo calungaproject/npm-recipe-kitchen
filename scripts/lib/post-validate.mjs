@@ -30,6 +30,7 @@ import { validateFacts } from './facts.mjs';
  * @typedef {Object} PostValidateOutcome
  * @property {boolean} ok
  * @property {string}  [status]        drafted | needs_human | input_error
+ * @property {string}  [identity]      the bound package identity (name@version)
  * @property {string}  [reason_code]   stable code on rejection
  * @property {Array}   [errors]        validation errors on rejection
  * @property {object}  [rendered]      renderer result for drafted outcomes
@@ -45,11 +46,23 @@ function readJson(path) {
  * @param {object} opts
  * @param {string} opts.resultPath  path to the agent's recipe-result.json
  * @param {string} opts.inputPath   path to the pre-script's recipe-input.json (fact bundle wrapper)
- * @param {string} opts.repoRoot    repo root for rendering
+ * @param {string} opts.repoRoot    repo root used to LOCATE runner code and to
+ *                                  place the kitchen-side audit artifact; this is
+ *                                  the config checkout, which is NOT committed.
+ * @param {string} [opts.renderRoot] repo root the recipe bundle is RENDERED into.
+ *                                  In CI this must be the target-repo working tree
+ *                                  that the post-script commits/pushes ($REPO_DIR),
+ *                                  which is a different checkout from `repoRoot`.
+ *                                  Defaults to `repoRoot` for local runs and tests
+ *                                  where both are the same tree.
  * @param {string} [opts.auditDir]  where to persist the fact-bundle audit artifact
  * @returns {PostValidateOutcome}
  */
-export function runPostValidation({ resultPath, inputPath, repoRoot, auditDir }) {
+export function runPostValidation({ resultPath, inputPath, repoRoot, renderRoot, auditDir }) {
+  // Render into the target-repo working tree when provided, else the config
+  // checkout. The audit artifact always stays with `repoRoot` (kitchen-side,
+  // gitignored) so it never enters the registry PR diff.
+  const renderTarget = renderRoot ?? repoRoot;
   // The fact bundle is REQUIRED. Without it we cannot bind the result to the
   // facts inference was performed on, so we refuse rather than fall back to an
   // unbound (inert) validation.
@@ -79,7 +92,7 @@ export function runPostValidation({ resultPath, inputPath, repoRoot, auditDir })
       return { ok: false, reason_code: 'DRAFT_ON_INPUT_ERROR', message: 'a drafted result is not permitted for an invalid/missing package identity' };
     }
     const audit_path = persistAudit({ auditDir, repoRoot, input, outcome: 'input_error' });
-    return { ok: true, status: 'input_error', reason_code: input.reason_code, message: input.reason, audit_path };
+    return { ok: true, status: 'input_error', identity: input.identity, reason_code: input.reason_code, message: input.reason, audit_path };
   }
 
   if (result.status === 'drafted') {
@@ -115,7 +128,7 @@ export function runPostValidation({ resultPath, inputPath, repoRoot, auditDir })
 
     let rendered;
     try {
-      rendered = render(renderResult, repoRoot);
+      rendered = render(renderResult, renderTarget);
     } catch (err) {
       if (err instanceof RenderError) {
         return { ok: false, reason_code: 'RENDER_REJECTED', message: err.message };
@@ -124,7 +137,7 @@ export function runPostValidation({ resultPath, inputPath, repoRoot, auditDir })
     }
 
     const audit_path = persistAudit({ auditDir, repoRoot, input, outcome: 'drafted', rendered });
-    return { ok: true, status: 'drafted', rendered, audit_path };
+    return { ok: true, status: 'drafted', identity: authoritative.identity, rendered, audit_path };
   }
 
   if (result.status === 'needs_human') {
@@ -135,7 +148,7 @@ export function runPostValidation({ resultPath, inputPath, repoRoot, auditDir })
       return { ok: false, reason_code: 'RESULT_REJECTED', errors: validation.errors, message: 'needs_human result rejected' };
     }
     const audit_path = persistAudit({ auditDir, repoRoot, input, outcome: 'needs_human' });
-    return { ok: true, status: 'needs_human', audit_path };
+    return { ok: true, status: 'needs_human', identity: expectedIdentity, message: result.reason, audit_path };
   }
 
   return { ok: false, reason_code: 'UNKNOWN_STATUS', message: `unknown result.status ${JSON.stringify(result.status)}` };
@@ -152,7 +165,7 @@ function persistAudit({ auditDir, repoRoot, input, outcome, rendered }) {
   const safeName = (facts?.package_name ?? 'unknown').replace(/[^A-Za-z0-9._@/-]/g, '_');
   const safeVersion = (facts?.package_version ?? '0.0.0').replace(/[^A-Za-z0-9._-]/g, '_');
 
-  const dir = auditDir ?? join(repoRoot, 'demo', 'audit', safeName, safeVersion);
+  const dir = auditDir ?? join(repoRoot, 'recipes', 'audit', safeName, safeVersion);
   mkdirSync(dir, { recursive: true });
 
   const artifact = {

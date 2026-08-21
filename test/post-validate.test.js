@@ -249,7 +249,7 @@ describe('runPostValidation — needs_human and input_error (no render, bound id
     assert.equal(res.ok, true, JSON.stringify(res));
     assert.equal(res.status, 'needs_human');
     assert.equal(res.rendered, undefined);
-    assert.ok(!existsSync(join(work, 'demo', 'output', 'fullsend')), 'needs_human must not render recipe files');
+    assert.ok(!existsSync(join(work, 'recipes', 'output', 'fullsend')), 'needs_human must not render recipe files');
   });
 
   it('rejects a needs_human result that re-targets a different identity', async () => {

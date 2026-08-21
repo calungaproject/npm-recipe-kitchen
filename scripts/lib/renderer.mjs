@@ -9,7 +9,7 @@ const TEMPLATES = new Map([
   [tierA.TEMPLATE_ID, tierA],
 ]);
 
-const ALLOWED_BASE = 'demo/output/fullsend';
+const ALLOWED_BASE = 'recipes/output/fullsend';
 const FIXED_FILENAMES = ['manifest.json', 'build.entrypoint.sh', 'verify.smoke.sh', 'evidence.md'];
 const MAX_PARAM_VALUE_LENGTH = 2000;
 const MAX_TOTAL_OUTPUT_BYTES = 1024 * 1024;

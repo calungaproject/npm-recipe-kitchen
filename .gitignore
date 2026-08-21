@@ -1,11 +1,11 @@
 node_modules/
 # Local scratch output is ignored, but the rendered recipe bundle under
-# demo/output/fullsend/ is the registry PR diff and MUST be committed.
+# recipes/output/fullsend/ is the registry PR diff and MUST be committed.
 # (Git cannot re-include a path whose parent dir is blanket-ignored, so glob
-# the contents with demo/output/* rather than the directory itself.)
-demo/output/*
-!demo/output/fullsend/
-demo/audit/
+# the contents with recipes/output/* rather than the directory itself.)
+recipes/output/*
+!recipes/output/fullsend/
+recipes/audit/
 coverage/
 .env
 .env.*
