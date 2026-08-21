@@ -23,6 +23,22 @@ Omitting `schema_version` or `package` fails deterministic schema validation and
 Must additionally include: `template_id`, `parameters`, `evidence`, `confidence`, `could_not_verify`.
 Must NOT include: `reason`, `escalation_target`.
 
+`parameters` is a map of typed objects `{ "type": ..., "value": ... }` and must contain every one of these keys, each bound **verbatim** to the trusted fact (the deterministic post-step re-derives each value from the fact bundle and rejects the run with `RESULT_REJECTED` on any missing or mismatched parameter):
+
+| parameter | type | value comes from |
+| --- | --- | --- |
+| `package_name` | string | `facts.package_name` |
+| `package_version` | string | `facts.package_version` |
+| `description` | string | authored by the agent (the only value it writes) |
+| `source_url` | string | `facts.source.git_url` (must start with `https://`) |
+| `source_ref` | string | `facts.source.commit_sha` (40-char lowercase hex SHA, not a tag) |
+| `source_tag` | string | `facts.source.tag` |
+| `upstream_npm_version` | string | `facts.upstream.upstream_npm_version`, else `facts.package_version` |
+| `main_entry` | string | `facts.upstream.main_entry` |
+| `has_cli` | boolean | `facts.upstream.has_cli` (a JSON boolean, not a string) |
+
+CLI parameters are conditional: when `has_cli` is `true`, also emit `cli_bin_path` (string, `facts.upstream.cli_bin_path`) and, when present, `cli_bin_name` (string, `facts.upstream.cli_bin_name`); when `has_cli` is `false`, both must be **absent**. `evidence` needs at least one item, `confidence` must be ≥ `0.5`, and `could_not_verify` must include every string from `facts.could_not_verify` verbatim. Do not add `parameters` keys beyond those listed.
+
 ### needs_human output
 
 Must additionally include: `reason`, `escalation_target`.

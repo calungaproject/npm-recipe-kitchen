@@ -80,11 +80,59 @@ A drafted result has this shape:
       "package": "semver@7.7.2",
       "status": "drafted",
       "template_id": "tier-a-npm-pack-no-build-v1",
-      "parameters": { "source_ref": { "type": "string", "value": "<40-char commit SHA>" }, "...": "..." },
+      "parameters": {
+        "package_name":         { "type": "string",  "value": "semver" },
+        "package_version":      { "type": "string",  "value": "7.7.2" },
+        "description":          { "type": "string",  "value": "The semantic versioner for npm" },
+        "source_url":           { "type": "string",  "value": "https://github.com/npm/node-semver.git" },
+        "source_ref":           { "type": "string",  "value": "281055e7716ef0415a8826972471331989ede58c" },
+        "source_tag":           { "type": "string",  "value": "v7.7.2" },
+        "upstream_npm_version": { "type": "string",  "value": "7.7.2" },
+        "has_cli":              { "type": "boolean", "value": true },
+        "cli_bin_path":         { "type": "string",  "value": "bin/semver.js" },
+        "main_entry":           { "type": "string",  "value": "index.js" }
+      },
       "evidence": [ { "kind": "...", "detail": "..." } ],
       "confidence": 0.9,
       "could_not_verify": []
     }
+
+### Required `parameters` for a drafted result
+
+Every one of the following parameters is REQUIRED and its `value` must equal the
+trusted fact **exactly** (the deterministic post-step re-derives each value from
+the fact bundle and rejects the run with `RESULT_REJECTED` on any missing or
+mismatched parameter). Each parameter is a typed object `{ "type": ..., "value": ... }`.
+Copy every value verbatim from `facts` — do not reformat, normalise, or invent:
+
+| parameter | type | value comes from | notes |
+| --- | --- | --- | --- |
+| `package_name` | string | `facts.package_name` | valid npm name, no shell metacharacters |
+| `package_version` | string | `facts.package_version` | |
+| `description` | string | you write it | a short one-line human description; this is the ONLY value you author |
+| `source_url` | string | `facts.source.git_url` | must start with `https://` |
+| `source_ref` | string | `facts.source.commit_sha` | the immutable 40-char lowercase hex SHA, NOT a tag |
+| `source_tag` | string | `facts.source.tag` | the git tag (may include a leading `v`), copied verbatim |
+| `upstream_npm_version` | string | `facts.upstream.upstream_npm_version`, else `facts.package_version` | |
+| `main_entry` | string | `facts.upstream.main_entry` | relative path of `[A-Za-z0-9._-]` segments |
+| `has_cli` | boolean | `facts.upstream.has_cli` | a JSON boolean literal `true`/`false`, not a string |
+
+CLI parameters are conditional on `has_cli`:
+- When `facts.upstream.has_cli` is `true`: add `cli_bin_path`
+  (string, from `facts.upstream.cli_bin_path`) and, when
+  `facts.upstream.cli_bin_name` is present, `cli_bin_name` (string, the command
+  name — it may differ from the bin file basename).
+- When `facts.upstream.has_cli` is `false`: `cli_bin_path` and `cli_bin_name`
+  MUST be absent. Emitting either for a non-CLI package is rejected.
+
+Also required for a drafted result:
+- `evidence`: at least one `{ "kind": ..., "detail": ... }` item.
+- `confidence`: a number ≥ `0.5`.
+- `could_not_verify`: an array that includes **every** string from
+  `facts.could_not_verify` verbatim (you may add caveats, but may not drop any
+  the collector recorded).
+
+Do not add any `parameters` keys beyond those listed above.
 
 A needs_human result has this shape:
 
@@ -139,6 +187,7 @@ Omitting `schema_version` or `package` fails deterministic schema validation and
 ### drafted output
 
 Must additionally include: `template_id`, `parameters`, `evidence`, `confidence`, `could_not_verify`.
+`parameters` must contain every required key described under "Required `parameters` for a drafted result" above (`package_name`, `package_version`, `description`, `source_url`, `source_ref`, `source_tag`, `upstream_npm_version`, `main_entry`, `has_cli`, plus `cli_bin_path`/`cli_bin_name` only when `has_cli` is true), each bound verbatim to the trusted fact. Omitting or altering any of them fails the deterministic post-step with `RESULT_REJECTED`.
 Must NOT include: `reason`, `escalation_target`.
 
 ### needs_human output
