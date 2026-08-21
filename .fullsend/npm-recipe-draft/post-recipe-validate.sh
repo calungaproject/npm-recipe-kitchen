@@ -159,6 +159,16 @@ echo "[post-validate] Passed"
 # Every required env var is guarded and a miss exits non-zero: fail loudly rather
 # than silently skip or open an empty PR. These creds come from the runner
 # process env (run.go childScriptEnv), not from the harness file.
+#
+# IMPORTANT — our env is the leaner `harness-run` job, NOT the stock `code` job.
+# A per-repo custom agent (role `coder`, trigger `/fs-onboard`) runs via
+# fullsend's harness-dispatch/harness-run path, not the hardcoded `code` stage
+# (there is no `/fs-onboard` route case; verified against fullsend v0.36.0
+# reusable-dispatch.yml). That job exports only REPO_FULL_NAME + GITHUB_ISSUE_URL
+# directly, plus STATUS_REPO/STATUS_NUMBER via the action, and sets NO
+# ISSUE_NUMBER, NO TARGET_BRANCH, and NO git committer identity (those live only
+# in the stock code/fix jobs). run.go childScriptEnv forwards the whole process
+# env to us, so we derive the missing values below rather than fail on them.
 # ---------------------------------------------------------------------------
 
 json_field() {
@@ -188,9 +198,45 @@ sanitize_ref() {
     printf '%s' "${s}"
 }
 
+ensure_git_identity() {
+    # harness-run runs no "Resolve bot identity" step, so REPO_DIR has no
+    # committer identity and `git commit` would fail with "Please tell me who you
+    # are". Mirror the stock code job: resolve the minted bot's identity via the
+    # GraphQL viewer using PUSH_TOKEN, falling back to a stable bot identity if
+    # the lookup fails (e.g. a token that cannot query viewer). Set it locally in
+    # the current repo (we are already cd'd into REPO_DIR).
+    if [[ -n "$(git config user.email || true)" && -n "$(git config user.name || true)" ]]; then
+        return 0
+    fi
+    local line
+    if line="$(GH_TOKEN="${PUSH_TOKEN}" gh api graphql \
+            -f query='{ viewer { login databaseId } }' \
+            --jq '.data.viewer | "\(.databaseId)+\(.login)@users.noreply.github.com \(.login)"' 2>/dev/null)" \
+        && [[ -n "${line}" && "${line}" == *" "* ]]; then
+        git config user.email "${line%% *}"
+        git config user.name "${line#* }"
+    else
+        git config user.email "fullsend-bot@users.noreply.github.com"
+        git config user.name "fullsend-bot"
+    fi
+}
+
 status="$(json_field status)"
 identity="$(json_field identity)"
 output_dir="$(json_field output_dir)"
+
+# Resolve the publish context from the vars harness-run actually exports. Prefer
+# the stock names (present if this ever runs in the code job), then fall back to
+# the harness-run sources. REPO_FULL_NAME is set directly; ISSUE_NUMBER comes
+# from STATUS_NUMBER (matrix.status_number = the work item's id) or, failing
+# that, the trailing segment of the issue URL. work_item events carry no base
+# branch anywhere, so TARGET_BRANCH defaults to main (mirroring the code job).
+REPO_FULL_NAME="${REPO_FULL_NAME:-${STATUS_REPO:-}}"
+ISSUE_NUMBER="${ISSUE_NUMBER:-${STATUS_NUMBER:-}}"
+if [[ -z "${ISSUE_NUMBER}" && -n "${GITHUB_ISSUE_URL:-}" ]]; then
+    ISSUE_NUMBER="${GITHUB_ISSUE_URL##*/}"
+fi
+TARGET_BRANCH="${TARGET_BRANCH:-main}"
 
 case "${status}" in
     drafted)
@@ -212,6 +258,7 @@ case "${status}" in
 
         (
             cd -- "${RENDER_ROOT}"
+            ensure_git_identity
             git checkout -B "${branch}"
             # Stage ONLY the rendered bundle so unrelated target-repo working-tree
             # state never leaks into the registry PR diff. The kitchen-side audit
