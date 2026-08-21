@@ -55,10 +55,16 @@ echo "[pre-facts] resolved identity: ${IDENTITY:-<none>}"
 
 # Pinned registry-contract input (Gate A). It is an explicit, read-only snapshot
 # of the target npm-registry manifest contract and is NEVER derived from npm
-# metadata. Point REGISTRY_CONTRACT_PROVENANCE at the reviewed provenance.json;
-# when unset the collector path blocks (reviewed KNOWN_FACTS overrides carry
-# their own reviewed SHA and are unaffected).
-export REGISTRY_CONTRACT_PROVENANCE="${REGISTRY_CONTRACT_PROVENANCE:-}"
+# metadata. It defaults to the reviewed provenance.json checked into the repo
+# (registry-contract/provenance.json); an out-of-band override may point
+# REGISTRY_CONTRACT_PROVENANCE elsewhere. When the file is absent/malformed the
+# collector path blocks (reviewed KNOWN_FACTS overrides carry their own reviewed
+# SHA and are unaffected).
+#
+# Without this default the collector path could NEVER run: every package not in
+# KNOWN_FACTS blocked with REGISTRY_CONTRACT_UNAVAILABLE, making the on-demand
+# fact bundles inert and forcing an unwarranted needs_human.
+export REGISTRY_CONTRACT_PROVENANCE="${REGISTRY_CONTRACT_PROVENANCE:-${REPO_ROOT}/registry-contract/provenance.json}"
 
 # Collect the facts via the on-demand collector (reviewed KNOWN_FACTS overrides
 # first, then live artifact + source verification) and write the agent input.

@@ -59,6 +59,7 @@ A `drafted` result is therefore impossible when facts are unavailable, the bundl
 ### Registry contract and audit artifact
 
 - The **registry-contract SHA** is a pinned, read-only Gate A input (`scripts/lib/registry-contract.mjs`), established out-of-band and validated as a full 40-hex commit SHA. It is never derived from npm metadata; when unavailable the collector blocks rather than inventing one. The kitchen only reads it — it never writes to `npm-registry`.
+- The reviewed snapshot ships as `registry-contract/provenance.json`; the pre-script defaults `REGISTRY_CONTRACT_PROVENANCE` to it, and an out-of-band review may point that variable elsewhere. Without a wired contract the collector path can never run — every package outside `KNOWN_FACTS` would block with `REGISTRY_CONTRACT_UNAVAILABLE`.
 - The exact fact bundle used for inference/validation is persisted as a reviewable, **kitchen-side** audit artifact (`recipes/audit/<name>/<version>/fact-bundle.json`). It is never part of the rendered recipe bundle that becomes a registry PR diff.
 
 ### Fullsend's restricted role
