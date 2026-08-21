@@ -7,8 +7,8 @@ import { tmpdir } from 'node:os';
 import { runPostValidation } from '../scripts/lib/post-validate.mjs';
 import { computeFacts, toAgentInput } from '../scripts/lib/compute-facts.mjs';
 import { buildParametersFromFacts, deriveAuthoritative } from '../scripts/lib/fact-bundle.mjs';
-import { KNOWN_FACTS } from '../scripts/lib/facts.mjs';
 import { makeOptions } from './helpers/collector-fakes.mjs';
+import { semverFacts } from './helpers/fixture-facts.mjs';
 
 // ---------------------------------------------------------------------------
 // Harness: everything drives the REAL runPostValidation entrypoint (the module
@@ -78,10 +78,10 @@ function run(inputPath, resultPath) {
 // ---------------------------------------------------------------------------
 
 describe('runPostValidation — drafted (happy paths render from trusted facts)', () => {
-  it('renders a manual-override (KNOWN_FACTS) package end-to-end', async () => {
-    const out = await computeFacts('semver@7.7.2', { overrides: KNOWN_FACTS, adapters: {} });
-    const inputPath = writeInputFromOutcome('semver@7.7.2', out);
-    const resultPath = writeResult(draftResultFromBundle(out.bundle));
+  it('renders a fact-bundle package end-to-end', async () => {
+    const bundle = semverFacts();
+    const inputPath = writeInputFromOutcome('semver@7.7.2', { status: 'ok', bundle });
+    const resultPath = writeResult(draftResultFromBundle(bundle));
 
     const res = run(inputPath, resultPath);
     assert.equal(res.ok, true, JSON.stringify(res));
@@ -172,9 +172,9 @@ describe('runPostValidation — a tampered authoritative field is always rejecte
   });
 
   it('rejects dropping a trusted could_not_verify observation', async () => {
-    // Default policy rejects tag_only, so build a bundle that carries a trusted
-    // could_not_verify caveat under an explicit allowTagOnly policy.
-    const out = await computeFacts('foo@1.2.3', makeOptions({ adapters: { provenanceStatus: 'absent' }, policy: { allowTagOnly: true } }));
+    // A tag_only association is accepted by default and carries a trusted
+    // could_not_verify caveat; the model may not drop it.
+    const out = await computeFacts('foo@1.2.3', makeOptions({ adapters: { provenanceStatus: 'absent' } }));
     assert.equal(out.status, 'ok');
     assert.ok(out.bundle.could_not_verify.length > 0);
     const inputPath = writeInputFromOutcome('foo@1.2.3', out);

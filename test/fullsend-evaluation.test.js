@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { render, RenderError, ALLOWED_BASE } from '../scripts/lib/renderer.mjs';
 import { validateRecipeResult, validateNeedsHumanResult } from '../scripts/lib/recipe-validator.mjs';
-import { getFacts } from '../scripts/lib/facts.mjs';
+import { semverFacts } from './helpers/fixture-facts.mjs';
 
 function loadFixture(name) {
   const path = new URL(`fixtures/contracts/recipe-result/${name}.json`, import.meta.url);
@@ -17,7 +17,7 @@ function loadGolden(file) {
   return readFileSync(path, 'utf-8');
 }
 
-const SEMVER_FACTS = getFacts('semver@7.7.2');
+const SEMVER_FACTS = semverFacts();
 
 describe('fullsend evaluation: drafted fixture', () => {
   let repoRoot;

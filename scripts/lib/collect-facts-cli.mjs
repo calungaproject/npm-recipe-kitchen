@@ -1,9 +1,8 @@
 // Thin CLI wrapper the pre-script invokes to produce the agent's recipe-input.json.
 //
 // Orchestration only: it loads the pinned registry-contract SHA, calls the
-// on-demand collector (with reviewed KNOWN_FACTS overrides and the default real
-// adapters), and writes the resulting agent input file. It enforces the failure
-// contract at the process boundary:
+// on-demand collector (with the default real adapters), and writes the resulting
+// agent input file. It enforces the failure contract at the process boundary:
 //
 //   - OperationalError (retryable infra: timeout, DNS/TLS, 429, 5xx, truncation,
 //     oversize, invalid JSON, unrelated child failure) -> exit 1, FAIL THE RUN.
@@ -15,12 +14,10 @@
 //   INPUT_FILE                    where to write recipe-input.json (required)
 //   REGISTRY_CONTRACT_PROVENANCE  path to the pinned Gate A provenance.json (optional)
 //   REGISTRY_URL                  registry base (default https://registry.npmjs.org)
-//   FACTS_ALLOW_TAG_ONLY          "1" to permit the weaker tag_only association
 
 import { writeFileSync } from 'node:fs';
 
 import { computeFacts, toAgentInput, OperationalError } from './compute-facts.mjs';
-import { KNOWN_FACTS } from './facts.mjs';
 import { defaultAdapters } from './adapters/npm-adapters.mjs';
 import { loadRegistryContract, RegistryContractError } from './registry-contract.mjs';
 
@@ -33,10 +30,9 @@ async function main() {
   }
 
   const registryUrl = process.env.REGISTRY_URL || 'https://registry.npmjs.org';
-  const allowTagOnly = process.env.FACTS_ALLOW_TAG_ONLY === '1';
 
   // The registry contract SHA is a pinned Gate A input, never derived from npm.
-  // Its absence blocks the collector path (overrides carry their own SHA).
+  // Its absence blocks the collector path.
   let registryContractSha;
   const provenancePath = process.env.REGISTRY_CONTRACT_PROVENANCE;
   if (provenancePath) {
@@ -55,9 +51,7 @@ async function main() {
   try {
     outcome = await computeFacts(identity, {
       registryContractSha,
-      overrides: KNOWN_FACTS,
       adapters: defaultAdapters,
-      policy: { allowTagOnly },
       registryUrl,
     });
   } catch (err) {

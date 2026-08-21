@@ -58,16 +58,15 @@ echo "[pre-facts] resolved identity: ${IDENTITY:-<none>}"
 # metadata. It defaults to the reviewed provenance.json checked into the repo
 # (registry-contract/provenance.json); an out-of-band override may point
 # REGISTRY_CONTRACT_PROVENANCE elsewhere. When the file is absent/malformed the
-# collector path blocks (reviewed KNOWN_FACTS overrides carry their own reviewed
-# SHA and are unaffected).
+# collector path blocks.
 #
-# Without this default the collector path could NEVER run: every package not in
-# KNOWN_FACTS blocked with REGISTRY_CONTRACT_UNAVAILABLE, making the on-demand
-# fact bundles inert and forcing an unwarranted needs_human.
+# Without this default the collector path could NEVER run: every package would
+# block with REGISTRY_CONTRACT_UNAVAILABLE, making the on-demand fact bundles
+# inert and forcing an unwarranted needs_human.
 export REGISTRY_CONTRACT_PROVENANCE="${REGISTRY_CONTRACT_PROVENANCE:-${REPO_ROOT}/registry-contract/provenance.json}"
 
-# Collect the facts via the on-demand collector (reviewed KNOWN_FACTS overrides
-# first, then live artifact + source verification) and write the agent input.
+# Collect the facts via the on-demand collector (live artifact + source
+# verification) and write the agent input.
 #
 # Failure contract enforced inside collect-facts-cli.mjs:
 #   - OPERATIONAL faults (timeout, DNS/TLS, 429, 5xx, truncation/oversize,

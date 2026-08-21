@@ -13,7 +13,6 @@ import {
   REASON,
   COLLECTOR_VERSION,
 } from '../scripts/lib/compute-facts.mjs';
-import { KNOWN_FACTS } from '../scripts/lib/facts.mjs';
 import { TEMPLATE_ID as TIER_A_TEMPLATE_ID } from '../scripts/lib/templates/tier-a-npm-pack-no-build-v1.mjs';
 import { makeOptions, makeAdapters, FAKE_COMMIT, FAKE_CONTRACT_SHA } from './helpers/collector-fakes.mjs';
 
@@ -187,7 +186,7 @@ describe('classifyTierA', () => {
   });
 });
 
-describe('computeFacts — input and policy gates', () => {
+describe('computeFacts — input gates', () => {
   it('returns input_error for an invalid identity (never fabricates one)', async () => {
     const out = await computeFacts('not-an-identity', makeOptions());
     assert.equal(out.status, 'input_error');
@@ -198,26 +197,6 @@ describe('computeFacts — input and policy gates', () => {
     const out = await computeFacts('foo@1.2.3', { adapters: makeAdapters() });
     assert.equal(out.status, 'blocked');
     assert.equal(out.reason_code, REASON.REGISTRY_CONTRACT_UNAVAILABLE);
-  });
-
-  it('short-circuits to a manual override without touching the network', async () => {
-    let touched = false;
-    const out = await computeFacts('semver@7.7.2', {
-      overrides: KNOWN_FACTS,
-      adapters: {
-        getPackument: async () => { touched = true; return null; },
-      },
-    });
-    assert.equal(out.status, 'ok');
-    assert.equal(out.bundle.source.resolution_method, 'manual_override');
-    assert.equal(out.bundle.package_name, 'semver');
-    assert.equal(touched, false, 'override path must not call network adapters');
-  });
-
-  it('an override does not require the external registry contract SHA', async () => {
-    const out = await computeFacts('chalk@5.3.0', { overrides: KNOWN_FACTS, adapters: {} });
-    assert.equal(out.status, 'ok');
-    assert.equal(out.bundle.registry_contract_sha, '67c20a7ebef70e7f3970a01f90fa210cb6860385');
   });
 });
 
@@ -260,12 +239,6 @@ describe('computeFacts — package/policy outcomes (needs_human, facts_available
     const out = await computeFacts('foo@1.2.3', makeOptions({ adapters: {
       resolveSourceTag: async () => ({ status: 'not_found' }),
     } }));
-    assert.equal(out.status, 'needs_human');
-    assert.equal(out.reason_code, REASON.UNVERIFIED_SOURCE_ASSOCIATION);
-  });
-
-  it('tag_only is NOT verified under default policy -> needs_human', async () => {
-    const out = await computeFacts('foo@1.2.3', makeOptions({ adapters: { provenanceStatus: 'absent' } }));
     assert.equal(out.status, 'needs_human');
     assert.equal(out.reason_code, REASON.UNVERIFIED_SOURCE_ASSOCIATION);
   });
@@ -314,11 +287,8 @@ describe('computeFacts — successful bundles', () => {
     assert.equal(lightweight.bundle.source.annotated_tag, false);
   });
 
-  it('tag_only becomes verifiable-with-caveat only under an explicit allowTagOnly policy', async () => {
-    const out = await computeFacts('foo@1.2.3', makeOptions({
-      adapters: { provenanceStatus: 'absent' },
-      policy: { allowTagOnly: true },
-    }));
+  it('accepts a tag_only source association by default with a could_not_verify caveat', async () => {
+    const out = await computeFacts('foo@1.2.3', makeOptions({ adapters: { provenanceStatus: 'absent' } }));
     assert.equal(out.status, 'ok');
     assert.equal(out.bundle.source.resolution_method, 'tag_only');
     assert.ok(out.bundle.could_not_verify.some(c => /tag_only/i.test(c)));

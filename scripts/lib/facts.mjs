@@ -1,87 +1,13 @@
-// Reviewed manual overrides. These are the exceptional / previously-approved
-// packages whose facts were established by human review rather than the on-demand
-// collector (scripts/lib/compute-facts.mjs). Each is marked explicitly with
-// `source.resolution_method: 'manual_override'` so downstream consumers can tell
-// an override-derived source association apart from a collector-verified one.
-const KNOWN_FACTS = new Map([
-  ['chalk@5.3.0', {
-    package_name: 'chalk',
-    package_version: '5.3.0',
-    identity: 'chalk@5.3.0',
-    source: {
-      git_url: 'https://github.com/chalk/chalk.git',
-      commit_sha: '72c742d4716b1f94bb24bbda86d96fbb247ca646',
-      tag: 'v5.3.0',
-      tag_matches_version: true,
-      resolution_method: 'manual_override',
-    },
-    upstream: {
-      has_build_step: false,
-      build_evidence: 'No build, prepare, prepack, or prepublishOnly script in package.json',
-      pack_command: 'npm pack --ignore-scripts',
-      has_cli: false,
-      main_entry: 'source/index.js',
-      runtime: 'ESM',
-      dependencies_count: 0,
-      lifecycle_scripts: false,
-    },
-    provenance: {
-      slsa_attestation_present: false,
-      attestation_verified: false,
-    },
-    could_not_verify: [
-      'No SLSA provenance attestation found for this package version',
-    ],
-    native_tier: 'A',
-    registry_contract_sha: '67c20a7ebef70e7f3970a01f90fa210cb6860385',
-  }],
-  ['semver@7.7.2', {
-    package_name: 'semver',
-    package_version: '7.7.2',
-    identity: 'semver@7.7.2',
-    source: {
-      git_url: 'https://github.com/npm/node-semver.git',
-      commit_sha: '281055e7716ef0415a8826972471331989ede58c',
-      tag: 'v7.7.2',
-      tag_matches_version: true,
-      resolution_method: 'manual_override',
-    },
-    upstream: {
-      has_build_step: false,
-      build_evidence: 'No build, prepare, prepack, or prepublishOnly script in package.json',
-      pack_command: 'npm pack --ignore-scripts',
-      has_cli: true,
-      cli_bin_name: 'semver',
-      cli_bin_path: 'bin/semver.js',
-      main_entry: 'index.js',
-      runtime: 'CommonJS',
-      dependencies_count: 0,
-      lifecycle_scripts: false,
-    },
-    provenance: {
-      slsa_attestation_present: true,
-      attestation_verified: false,
-    },
-    could_not_verify: [
-      'SLSA attestation signature chain not independently verified',
-    ],
-    native_tier: 'A',
-    registry_contract_sha: '017ebd5a3c5fef6d595f7c852fd584a7d5fae255',
-  }],
-]);
+// Fact-bundle structural validation.
+//
+// `validateFacts` is the runner-side (Gate 0) structural check that a fact bundle
+// carries the authoritative fields a drafted recipe must bind — a valid identity,
+// a full commit SHA and git URL for the source association, a native tier, and a
+// could_not_verify observation array — before post-validation renders from it.
+// Facts themselves are produced only by the on-demand collector
+// (scripts/lib/compute-facts.mjs); this module never trusts model-echoed values.
 
 const NAME_VERSION_RE = /^(@[a-z0-9][a-z0-9._-]*\/)?[a-z0-9][a-z0-9._-]*@\d+\.\d+\.\d+([-+][-a-zA-Z0-9.+]+)?$/;
-
-export function getFacts(identity) {
-  if (typeof identity !== 'string' || !NAME_VERSION_RE.test(identity)) {
-    throw new Error(`Invalid package identity: ${identity}`);
-  }
-  const facts = KNOWN_FACTS.get(identity);
-  if (!facts) {
-    throw new Error(`No pre-computed facts for ${identity}. Only deterministic, pre-verified facts are supported.`);
-  }
-  return structuredClone(facts);
-}
 
 export function validateFacts(facts) {
   const errors = [];
@@ -105,5 +31,3 @@ export function validateFacts(facts) {
   }
   return { valid: errors.length === 0, errors };
 }
-
-export { KNOWN_FACTS };

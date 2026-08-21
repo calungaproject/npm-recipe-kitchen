@@ -1,12 +1,11 @@
 // Fact-bundle helpers: the single mapping from a trusted fact bundle to the
 // authoritative recipe parameters.
 //
-// A fact bundle is produced either by the on-demand collector
-// (scripts/lib/compute-facts.mjs) or by a reviewed manual override
-// (scripts/lib/facts.mjs KNOWN_FACTS). Both shapes converge on the same set of
-// authoritative accessors so the validator (recipe-validator.mjs) and the
-// renderer (post-validate.mjs) never trust model-echoed values for identity,
-// source, build, CLI, or entrypoint facts.
+// A fact bundle is produced by the on-demand collector
+// (scripts/lib/compute-facts.mjs). deriveAuthoritative() collapses it onto a
+// single set of authoritative accessors so the validator (recipe-validator.mjs)
+// and the renderer (post-validate.mjs) never trust model-echoed values for
+// identity, source, build, CLI, or entrypoint facts.
 //
 // Distinction preserved throughout:
 //   - raw observations       -> registry.* / upstream.* / source.*
@@ -38,9 +37,9 @@ function basenameNoExt(p) {
 }
 
 /**
- * Collapse a fact bundle (collector output or manual override) into the exact
- * authoritative fields a recipe result must bind. Returns `null` when the
- * bundle is not shaped like a fact bundle at all.
+ * Collapse a fact bundle into the exact authoritative fields a recipe result
+ * must bind. Returns `null` when the bundle is not shaped like a fact bundle at
+ * all.
  */
 export function deriveAuthoritative(bundle) {
   if (!bundle || typeof bundle !== 'object') return null;
@@ -60,8 +59,7 @@ export function deriveAuthoritative(bundle) {
     source_ref: source.commit_sha,
     source_tag: source.tag,
     // The upstream npm version is, by construction, the exact requested version;
-    // carry an explicit field when the collector recorded one, else fall back to
-    // the package version so overrides without the field still bind.
+    // carry the collector's explicit field, else fall back to the package version.
     upstream_npm_version: upstream.upstream_npm_version ?? bundle.package_version,
     has_cli: upstream.has_cli === true,
     // A missing CLI bin path is authoritative absence, not "unknown": normalise

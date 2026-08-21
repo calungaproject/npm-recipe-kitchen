@@ -2,17 +2,17 @@
 //
 // Produces a versioned, trusted fact bundle for an EXACT npm identity by
 // inspecting real evidence (registry metadata, the downloaded+integrity-checked
-// tarball, and a pinned source checkout) rather than trusting a static map or
-// registry metadata alone. KNOWN_FACTS (scripts/lib/facts.mjs) survives only as
-// reviewed manual overrides.
+// tarball, and a pinned source checkout) rather than trusting registry metadata
+// alone.
 //
 // Trust boundaries (see README):
 //   - The npm ARTIFACT and the SOURCE repository are separate trust questions.
 //   - Metadata is never treated as proof of tarball contents; the downloaded
 //     bytes are integrity-checked and the tarball is inspected directly.
 //   - `git ls-remote` tag resolution is `tag_only`, NOT proof the tarball was
-//     built from that commit. Under the default policy tag_only does not become
-//     an authoritative verified source link.
+//     built from that commit. This POC accepts a tag_only association and records
+//     the gap as a could_not_verify caveat; only cryptographically verified
+//     provenance yields an authoritative `verified_provenance` link.
 //
 // Failure model:
 //   - Package / policy outcomes return { status: 'needs_human', reason_code }.
@@ -316,56 +316,11 @@ function requireAdapters(adapters, names) {
 }
 
 /**
- * Build a fact bundle from a reviewed manual override. Marked
- * resolution_method: 'manual_override' and never re-derived from the network.
- */
-export function bundleFromOverride(identity, override, { registryContractSha } = {}) {
-  // A reviewed override carries its own reviewed registry_contract_sha; prefer
-  // it over any externally supplied one.
-  const contractSha = override.registry_contract_sha ?? registryContractSha;
-  const source = { ...override.source, resolution_method: 'manual_override' };
-  const upstream = {
-    upstream_npm_version: override.package_version,
-    ...override.upstream,
-  };
-  return {
-    schema_version: FACT_BUNDLE_SCHEMA_VERSION,
-    identity,
-    package_name: override.package_name,
-    package_version: override.package_version,
-    collector: { version: COLLECTOR_VERSION, resolution_method: 'manual_override' },
-    registry: override.registry ?? {
-      registry_url: null,
-      tarball_url: null,
-      dist_integrity: null,
-      registry_signature_status: 'absent',
-      provenance_status: override.provenance?.attestation_verified ? 'verified' : (override.provenance?.slsa_attestation_present ? 'unverified' : 'absent'),
-    },
-    source,
-    upstream,
-    provenance: override.provenance,
-    classification: {
-      eligible: true,
-      native_tier: override.native_tier,
-      template_id: override.native_tier === 'A' ? TIER_A_TEMPLATE_ID : undefined,
-      reasons: ['reviewed manual override'],
-    },
-    native_tier: override.native_tier,
-    registry_contract_sha: contractSha,
-    could_not_verify: Array.isArray(override.could_not_verify) ? override.could_not_verify : [],
-    evidence: [{ kind: 'manual-override', detail: `Facts sourced from reviewed manual override for ${identity}` }],
-    digests: {},
-  };
-}
-
-/**
  * Collect a trusted fact bundle for an exact npm identity.
  *
  * @param {string} identity  `name@1.2.3` or `@scope/name@1.2.3`
  * @param {object} options
  * @param {string}  options.registryContractSha  full 40-hex SHA (Gate A input)
- * @param {object}  [options.overrides]          Map|object of identity -> reviewed override
- * @param {object}  [options.policy]             { allowTagOnly?: boolean }
  * @param {object}  options.adapters             injected IO adapters (see README)
  * @param {string}  [options.registryUrl]        configured registry (default npmjs)
  * @returns {Promise<{status:'ok', bundle} | {status:'needs_human', reason_code, reason} | {status:'input_error', reason_code, reason} | {status:'blocked', reason_code, reason}>}
@@ -374,8 +329,6 @@ export function bundleFromOverride(identity, override, { registryContractSha } =
 export async function computeFacts(identity, options = {}) {
   const {
     registryContractSha,
-    overrides,
-    policy = {},
     adapters = {},
     registryUrl = 'https://registry.npmjs.org',
     limits = {},
@@ -391,14 +344,6 @@ export async function computeFacts(identity, options = {}) {
   }
 
   const { name, version, unscoped } = parsed;
-
-  // Reviewed manual override short-circuits network collection. It carries its
-  // own reviewed registry_contract_sha, so it does not need the external
-  // contract input.
-  const override = overrides instanceof Map ? overrides.get(identity) : overrides?.[identity];
-  if (override) {
-    return { status: 'ok', bundle: bundleFromOverride(identity, override, { registryContractSha }) };
-  }
 
   // The collector path requires the pinned registry-contract SHA (Gate A input).
   // It is NOT derived from npm metadata; if unavailable we block rather than
@@ -526,22 +471,17 @@ export async function computeFacts(identity, options = {}) {
     detail: `${tagRes.tag} (${tagRes.annotated ? 'annotated' : 'lightweight'}) resolves to commit ${commitSha}`,
   });
 
-  // 11-12. Source-to-artifact association policy.
+  // 11-12. Source-to-artifact association.
   //   git ls-remote proves the tag->commit mapping only (tag_only). It does NOT
-  //   prove the npm tarball was built from that commit. Only verified provenance
-  //   (or a reviewed override, handled above) establishes an authoritative link.
+  //   prove the npm tarball was built from that commit. This POC accepts a
+  //   tag_only association and records the unverified build provenance as a
+  //   could_not_verify caveat; only cryptographically verified provenance yields
+  //   an authoritative `verified_provenance` link.
   let resolutionMethod;
   if (provStatus.provenance_status === 'verified') {
     resolutionMethod = 'verified_provenance';
   } else {
     resolutionMethod = 'tag_only';
-    if (!policy.allowTagOnly) {
-      return {
-        status: 'needs_human',
-        reason_code: REASON.UNVERIFIED_SOURCE_ASSOCIATION,
-        reason: `source association for ${identity} is tag_only; default policy requires verified provenance or a reviewed override`,
-      };
-    }
     couldNotVerify.push('Source association is tag_only (tag->commit only); tarball build provenance not verified');
   }
 

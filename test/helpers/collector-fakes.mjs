@@ -78,8 +78,6 @@ export function makeOptions(over = {}) {
   return {
     registryContractSha: over.registryContractSha ?? FAKE_CONTRACT_SHA,
     adapters: makeAdapters(over.adapters ?? {}),
-    policy: over.policy ?? {},
     registryUrl: over.registryUrl ?? 'https://registry.npmjs.org',
-    ...(over.overrides ? { overrides: over.overrides } : {}),
   };
 }
