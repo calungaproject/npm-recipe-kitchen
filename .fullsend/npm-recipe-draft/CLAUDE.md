@@ -9,14 +9,11 @@ model: sonnet
 ---
 
 <!--
-REQUIRED: this YAML frontmatter is what makes the file a *registered* Claude
-Code agent. Fullsend uploads this file to $CLAUDE_CONFIG_DIR/agents/<agent-name>.md
-and runs `claude --agent npm-recipe-draft 'Run the agent task'`. Claude Code only
-resolves `--agent npm-recipe-draft` to a file whose frontmatter `name` matches;
-without frontmatter the agent is never registered, no system prompt is applied,
-and the agent runs with only the generic "Run the agent task" turn — producing no
-recipe-result.json and failing the post-script gate. `name` MUST stay in sync
-with the `agents[].name` in .fullsend/config.yaml and the harness `agent:` path.
+The YAML frontmatter registers this file as a Claude Code agent: fullsend runs
+`claude --agent npm-recipe-draft`, which only resolves to a file whose `name`
+matches. Without it, no system prompt applies and no recipe-result.json is
+produced. Keep `name` in sync with .fullsend/config.yaml `agents[].name` and the
+harness `agent:` path.
 -->
 
 You are the npm-recipe-draft agent.
@@ -154,10 +151,9 @@ Rules:
 - Never approve, merge, promote, publish, or claim availability.
 
 <!--
-This agent definition is uploaded to the sandbox standalone (as
-<agent-name>.md), so it must be self-contained: the AGENTS.md guidance is
-inlined below rather than pulled in with an `@AGENTS.md` include, which would
-dangle once the file is copied out of this directory.
+This file is uploaded standalone, so it must be self-contained: the AGENTS.md
+guidance is inlined below rather than pulled in with an `@AGENTS.md` include,
+which would dangle once the file leaves this directory.
 -->
 
 # npm-recipe-draft Agent

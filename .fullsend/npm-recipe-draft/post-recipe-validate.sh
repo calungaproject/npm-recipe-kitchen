@@ -1,32 +1,21 @@
 #!/usr/bin/env bash
-# Post-recipe validation: the deterministic safety gate for npm-recipe-draft.
+# Post-recipe validation: the deterministic safety gate.
 #
-# Runs on the RUNNER (outside the sandbox) after the agent exits. Fullsend
-# invokes it with cwd = the run directory and blocks the result (fails the run)
-# if this script exits non-zero. It re-runs the repo's semantic validator
-# against the agent's recipe-result.json before the result is acted on.
-#
-# Runtime contract (fullsend v0.36.0, internal/cli/run.go):
-#   cwd                              = the run directory (contains iteration-*/)
-#   FULLSEND_VALIDATED_ITERATION_DIR = <run>/iteration-N/output (the validated
-#                                      iteration), when present
-# This script does NOT rely on REPO_ROOT or FULLSEND_OUTPUT_DIR being exported
-# (they are not, for runner-side post-scripts); it derives the repo root from
-# its own on-disk location instead.
+# Runs on the runner after the agent exits, with cwd = the run directory.
+# Fullsend blocks the result if this exits non-zero. It re-runs the semantic
+# validator against the agent's recipe-result.json, then renders and publishes.
+# Runner-side post-scripts don't get REPO_ROOT/FULLSEND_OUTPUT_DIR exported, so
+# the repo root is derived from this script's own location.
 set -euo pipefail
 
-# Repo root: this script lives at <repo>/.fullsend/npm-recipe-draft/, so the
-# repo root is two directories up from the script directory.
+# Repo root is two dirs up from this script.
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd -- "${script_dir}/../.." && pwd)"
 
-# The runner-side validator depends on ajv (scripts/lib/validate.mjs), but the
-# managed fullsend workflow checks out the repo without installing node
-# dependencies and node_modules/ is gitignored, so ajv is absent here. Install
-# production deps on demand from the committed lockfile. Guard on ajv's presence
-# so repeat runs and local `fullsend run` (where deps already exist) skip the
-# network round-trip. --ignore-scripts keeps the install from executing package
-# lifecycle scripts inside this trusted gate.
+# The validator needs ajv, but the managed workflow checks out without installing
+# deps (node_modules/ is gitignored). Install prod deps from the lockfile on
+# demand; guard on ajv so runs where deps exist skip the network round-trip.
+# --ignore-scripts keeps package lifecycle scripts out of this trusted gate.
 if [[ ! -d "${REPO_ROOT}/node_modules/ajv" ]]; then
     echo "[post-validate] Installing validator dependencies in ${REPO_ROOT}"
     (cd -- "${REPO_ROOT}" && npm ci --ignore-scripts --no-audit --no-fund --omit=dev)
@@ -41,9 +30,8 @@ result_file=""
 if [[ -n "${FULLSEND_VALIDATED_ITERATION_DIR:-}" && -f "${FULLSEND_VALIDATED_ITERATION_DIR}/${result_name}" ]]; then
     result_file="${FULLSEND_VALIDATED_ITERATION_DIR}/${result_name}"
 else
-    # nullglob so a no-match glob expands to nothing rather than the literal
-    # pattern; select the highest iteration number so iteration-10 beats
-    # iteration-9 (lexicographic "last wins" would pick iteration-9).
+    # nullglob so a no-match glob expands to nothing; pick the highest iteration
+    # number (numeric, so iteration-10 beats iteration-9).
     shopt -s nullglob
     latest_iter=-1
     for dir in iteration-*/output; do
@@ -65,25 +53,19 @@ if [[ -z "${result_file}" ]]; then
     exit 1
 fi
 
-# The EXACT fact bundle the pre-script produced for inference. Reading this same
-# file (rather than recomputing facts) is what makes trusted-fact enforcement
-# real: validation and rendering are bound to the facts the agent actually saw.
-# This is the fixed runner path the pre-script wrote and host_files copied in.
+# The exact fact bundle the pre-script produced. Reading this same file (not
+# recomputing) binds validation and rendering to the facts the agent saw.
 INPUT_FILE="${RECIPE_INPUT_FILE_RUNNER:-/tmp/fullsend-npm-recipe-draft/recipe-input.json}"
 
-# The recipe bundle must render into the checkout that CI actually commits and
-# pushes: the sandbox working-tree fullsend downloads and exposes as REPO_DIR.
-# REPO_ROOT (this config checkout) is never committed, so rendering there — the
-# original bug — silently dropped the recipe files from the PR. Fail closed if
-# REPO_DIR is absent rather than render into a tree nothing publishes.
+# Render into REPO_DIR — the sandbox working tree fullsend commits and pushes.
+# REPO_ROOT (this config checkout) is never committed, so rendering there would
+# silently drop the recipe from the PR. Fail closed if REPO_DIR is absent.
 RENDER_ROOT="${REPO_DIR:?REPO_DIR is not set; refusing to render the recipe bundle into an unpublished checkout}"
 
-# The node block below writes its outcome to these two files so the post-actions
-# section can decide what to publish. status_file holds only fields WE generate
-# (status enum, validated identity, generated output path) — safe, machine
-# readable. comment_body_file holds the human-readable reason text; routing it
-# through a file means gh reads it via --body-file and it never has to survive
-# shell requoting.
+# The node block writes its outcome to two files for the post-actions below.
+# status_file holds only fields we generate (status, identity, output path);
+# comment_body_file holds the human reason text, read by gh via --body-file so it
+# never has to survive shell requoting.
 status_file="$(mktemp)"
 comment_body_file="$(mktemp)"
 trap 'rm -f -- "${status_file}" "${comment_body_file}"' EXIT
@@ -145,35 +127,24 @@ echo "[post-validate] Passed"
 # ---------------------------------------------------------------------------
 # Post-actions: publish the validated outcome.
 #
-# fullsend's `run` step does NOT commit/push/open PRs — it downloads the sandbox
-# working tree into REPO_DIR and hands it to this post-script. A custom
-# post_script FULLY REPLACES stock post-code.sh, so unless we do it here NO PR is
-# ever opened. Stock also assumes the AGENT committed in-sandbox; ours only
-# writes recipe-result.json, so we add + commit the rendered bundle ourselves.
+# fullsend's `run` step doesn't commit/push/open PRs — it hands us the sandbox
+# working tree in REPO_DIR. A custom post_script fully replaces stock
+# post-code.sh, so unless we act here no PR is ever opened.
 #
 #   drafted                   -> branch, add ONLY the rendered bundle, commit,
 #                                push, open a PR against $TARGET_BRANCH.
 #   needs_human / input_error -> render nothing; post the reason as an issue
 #                                comment. No branch/commit/push/PR.
 #
-# Every required env var is guarded and a miss exits non-zero: fail loudly rather
-# than silently skip or open an empty PR. These creds come from the runner
-# process env (run.go childScriptEnv), not from the harness file.
-#
-# IMPORTANT — our env is the leaner `harness-run` job, NOT the stock `code` job.
-# A per-repo custom agent (role `coder`, trigger `/fs-onboard`) runs via
-# fullsend's harness-dispatch/harness-run path, not the hardcoded `code` stage
-# (there is no `/fs-onboard` route case; verified against fullsend v0.36.0
-# reusable-dispatch.yml). That job exports only REPO_FULL_NAME + GITHUB_ISSUE_URL
-# directly, plus STATUS_REPO/STATUS_NUMBER via the action, and sets NO
-# ISSUE_NUMBER, NO TARGET_BRANCH, and NO git committer identity (those live only
-# in the stock code/fix jobs). run.go childScriptEnv forwards the whole process
-# env to us, so we derive the missing values below rather than fail on them.
+# We run via the leaner harness-run job (role `coder`, /fs-onboard trigger), not
+# the stock `code` job, so ISSUE_NUMBER, TARGET_BRANCH, and the git committer
+# identity aren't exported — we derive them below. Required env vars are guarded;
+# a miss exits non-zero rather than open an empty PR.
 # ---------------------------------------------------------------------------
 
 json_field() {
-    # Read a top-level string field from the status file. node is already a hard
-    # requirement of this gate, so we lean on it rather than a shell JSON parser.
+    # Read a top-level string field from the status file via node (already a hard
+    # dependency of this gate).
     node -e 'const{readFileSync}=require("node:fs");const o=JSON.parse(readFileSync(process.argv[1],"utf-8"));process.stdout.write(String(o[process.argv[2]]??""))' \
         "${status_file}" "$1"
 }
@@ -199,12 +170,9 @@ sanitize_ref() {
 }
 
 ensure_git_identity() {
-    # harness-run runs no "Resolve bot identity" step, so REPO_DIR has no
-    # committer identity and `git commit` would fail with "Please tell me who you
-    # are". Mirror the stock code job: resolve the minted bot's identity via the
-    # GraphQL viewer using PUSH_TOKEN, falling back to a stable bot identity if
-    # the lookup fails (e.g. a token that cannot query viewer). Set it locally in
-    # the current repo (we are already cd'd into REPO_DIR).
+    # harness-run sets no committer identity, so `git commit` would fail. Resolve
+    # the minted bot's identity via the GraphQL viewer (PUSH_TOKEN), falling back
+    # to a stable bot identity if the lookup fails. Set it locally in REPO_DIR.
     if [[ -n "$(git config user.email || true)" && -n "$(git config user.name || true)" ]]; then
         return 0
     fi
@@ -225,12 +193,9 @@ status="$(json_field status)"
 identity="$(json_field identity)"
 output_dir="$(json_field output_dir)"
 
-# Resolve the publish context from the vars harness-run actually exports. Prefer
-# the stock names (present if this ever runs in the code job), then fall back to
-# the harness-run sources. REPO_FULL_NAME is set directly; ISSUE_NUMBER comes
-# from STATUS_NUMBER (matrix.status_number = the work item's id) or, failing
-# that, the trailing segment of the issue URL. work_item events carry no base
-# branch anywhere, so TARGET_BRANCH defaults to main (mirroring the code job).
+# Resolve the publish context, preferring stock env names then harness-run
+# sources: ISSUE_NUMBER from STATUS_NUMBER or the issue URL's trailing segment;
+# TARGET_BRANCH defaults to main (work_item events carry no base branch).
 REPO_FULL_NAME="${REPO_FULL_NAME:-${STATUS_REPO:-}}"
 ISSUE_NUMBER="${ISSUE_NUMBER:-${STATUS_NUMBER:-}}"
 if [[ -z "${ISSUE_NUMBER}" && -n "${GITHUB_ISSUE_URL:-}" ]]; then

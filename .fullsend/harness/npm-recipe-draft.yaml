@@ -1,52 +1,30 @@
-# Fullsend agent harness: npm-recipe-draft
-# Validated against fullsend v0.36.0 harness loader.
-# The `agent` field must point to a single agent-definition MARKDOWN FILE
-# (relative to .fullsend/), not a directory: the bootstrap scanner reads it
-# with os.ReadFile and uploads it to the sandbox as <agent-name>.md. Pointing
-# at a directory fails bootstrap with "read ...: is a directory".
+# Fullsend agent harness: npm-recipe-draft.
+#
+# `agent` must point to a single agent-definition markdown file (relative to
+# .fullsend/), not a directory — bootstrap uploads it to the sandbox as
+# <agent-name>.md.
 agent: npm-recipe-draft/CLAUDE.md
 role: coder
 
 # Model access. Without this the sandbox has no LLM credentials and Claude Code
-# exits immediately with "Not logged in · Please run /login" (0 tokens, ~1s),
-# producing no recipe-result.json. The stock code/review agents get this from
-# their URL-sourced fullsend-ai/agents harness; a LOCAL harness must declare it
-# itself. See building-custom-agents.md ("Agent crashes immediately (0s
-# runtime) → sandbox can't authenticate to Vertex AI").
-#
-# `vertex-ai` resolves to .fullsend/providers/vertex-ai.yaml, whose profile
-# (.fullsend/profiles/fullsend-vertex-ai.yaml) opens sandbox egress to
-# api.anthropic.com + *.googleapis.com. providers/ and profiles/ are NOT in the
-# dispatch layered-dirs set, so these files are shipped in-repo, not injected.
+# exits immediately ("Not logged in"), producing no recipe-result.json. A local
+# harness must declare it (stock agents get it from their URL-sourced harness).
+# `vertex-ai` resolves to providers/vertex-ai.yaml, whose profile opens sandbox
+# egress to api.anthropic.com + *.googleapis.com; both are shipped in-repo since
+# providers/ and profiles/ aren't in the dispatch layered-dirs set.
 providers:
     - vertex-ai
 
-# GCP Vertex credentials, mounted into the sandbox. The runner's Setup GCP step
-# (WIF) exports GOOGLE_APPLICATION_CREDENTIALS / GCP_OIDC_TOKEN_FILE and
-# ANTHROPIC_VERTEX_PROJECT_ID / CLOUD_ML_REGION / GOOGLE_CLOUD_PROJECT; the
-# .env.d file (expand: true) is templated from those and enables Vertex mode.
+# Files mounted into the sandbox:
+# - the GCP Vertex credentials (from the runner's WIF Setup GCP step) and the
+#   .env.d file (expand: true) that enables Vertex mode;
+# - the agent's INPUT: the deterministic facts file the pre-script writes.
 #
-# The final entry delivers the agent's INPUT: the pre-computed deterministic
-# facts file produced by pre_script (below).
-#
-# CRITICAL ORDERING (verified against fullsend v0.36.0 via `fullsend run`):
-# host_files are validated (stat each `src`) BEFORE the pre-script runs, but
-# copied into the sandbox AFTER it runs. The two phases are:
-#   1. "validating files"  — stat every src        (BEFORE pre-script)
-#   2. "Running pre-script" — writes recipe-input.json
-#   3. "Creating sandbox"   — copies host_files in  (AFTER pre-script)
-# Because the file does not exist yet at phase 1, this entry MUST be
-# `optional: true`, or the run dies with
-#   "validating files: host_files[N].src: stat .../recipe-input.json: no such file or directory".
-# optional skips the phase-1 existence check; the pre-script then creates the
-# file, and phase 3 copies the now-present file in. (Earlier revisions of this
-# comment wrongly claimed validation happened after the pre-script — it does
-# not; that mistaken assumption is what kept breaking this run.)
-#
-# `src` is expanded with the runner PROCESS env (os.ExpandEnv), which does NOT
-# see env.runner values — so the path is a literal shared verbatim with
-# pre-recipe-facts.sh rather than an env indirection. The agent reads it at the
-# sandbox path exported as $RECIPE_INPUT_FILE (env.sandbox).
+# The facts file must be `optional: true`: fullsend stat-checks every `src`
+# BEFORE the pre-script runs but copies files in AFTER, so it doesn't exist yet
+# at check time. `src` is expanded with the runner PROCESS env (not env.runner),
+# so this path is shared verbatim with pre-recipe-facts.sh. The agent reads it
+# at $RECIPE_INPUT_FILE (env.sandbox).
 host_files:
     - src: env/gcp-vertex.env
       dest: /sandbox/workspace/.env.d/gcp-vertex.env
@@ -60,49 +38,35 @@ host_files:
       dest: /sandbox/workspace/recipe-input.json
       optional: true
 
-# Pre-script: the deterministic FACT PROVISIONER. Runs on the RUNNER (outside the
-# sandbox) BEFORE the sandbox is created; a non-zero exit aborts the run. It
-# resolves the target package identity (from RECIPE_PACKAGE or the /fs-onboard
-# comment) and writes the pre-computed facts (git URL, immutable source SHA,
-# provenance) to the fixed path the host_files entry above copies in. This is
-# what makes the agent's "facts come from pre-computed deterministic facts"
-# contract real: the sandboxed, credential-less agent receives the facts as data
-# and never fabricates them. An unknown/invalid package yields facts_available:
-# false so the agent emits needs_human; only genuine infra faults fail the run.
-#
-# Like post_script, the path must live under .fullsend/ (traversal guard) and the
-# script derives the repo root from its own location to reach scripts/lib/*.mjs.
+# Pre-script: the deterministic fact provisioner. Runs on the runner (outside
+# the sandbox) before the sandbox is created; a non-zero exit aborts the run. It
+# resolves the target identity (RECIPE_PACKAGE or the /fs-onboard comment) and
+# writes the facts to the path host_files copies in — so the credential-less
+# agent receives facts as data and never fabricates them. An unknown/invalid
+# package yields facts_available: false (agent emits needs_human); only genuine
+# infra faults fail the run. The path must live under .fullsend/ (traversal
+# guard); the script derives the repo root from its own location.
 pre_script: npm-recipe-draft/pre-recipe-facts.sh
 
-# Agent output filename. Exported into the sandbox so the agent writes to
-# $FULLSEND_OUTPUT_DIR/recipe-result.json, and read back by the post-script.
-# runner_env is deprecated (ADR 0055); use env.runner.
-#
-# env.sandbox exports RECIPE_INPUT_FILE so the agent references the input by
-# variable instead of hard-coding the sandbox path (buildSandboxEnvLines, ADR
-# 0055). It must match the host_files `dest` above.
+# Agent I/O env. FULLSEND_OUTPUT_FILE names the result file the agent writes and
+# the post-script reads. RECIPE_INPUT_FILE lets the agent reference its input by
+# variable instead of hard-coding the sandbox path; it must match the host_files
+# `dest` above.
 env:
     runner:
         FULLSEND_OUTPUT_FILE: recipe-result.json
     sandbox:
         RECIPE_INPUT_FILE: /sandbox/workspace/recipe-input.json
 
-# Deterministic safety gate. Runs on the RUNNER (outside the sandbox) after the
-# agent exits, with cwd = the run directory. Fullsend blocks the result (marks
-# the run failed) if this exits non-zero. It re-runs the repo's semantic
-# validator (schema + template allowlist + source-SHA match + parameter safety)
-# against the agent's recipe-result.json before anything is acted on.
-#
-# The path must live under .fullsend/ — fullsend's path resolver rejects any
-# reference that escapes the .fullsend directory (traversal guard). The script
-# locates the repo root from its own location to reach scripts/lib/*.mjs.
+# Deterministic safety gate. Runs on the runner after the agent exits; a
+# non-zero exit blocks the result. It re-runs the semantic validator (schema +
+# template allowlist + source-SHA match + parameter safety) against the agent's
+# recipe-result.json before anything is acted on. Same .fullsend/ traversal
+# guard and repo-root derivation as the pre-script.
 post_script: npm-recipe-draft/post-recipe-validate.sh
 
-# Dispatch trigger: a CEL expression over NormalizedEvent.
-# fullsend dispatch only selects a harness whose trigger is a non-empty CEL
-# expression; a harness with no trigger is manual-run-only and is excluded
-# from dispatch (see ADR 0061 / CEL Triggers Reference, v0.36.0).
-# This selects the /fs-onboard command comment on a work item.
+# Dispatch trigger (CEL over the normalized event): the /fs-onboard command
+# comment on a work item. A harness with no trigger is manual-run-only.
 trigger: >
   event.transition.kind == "comment_added"
     && has(event.transition.comment.command)

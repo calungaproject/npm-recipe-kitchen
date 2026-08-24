@@ -68,7 +68,7 @@ Fullsend (the sandboxed model) is restricted to **judgment**: given the trusted 
 ## Boundary: what this repository does NOT do
 
 - It does **not** write to any registry, open a registry PR, promote, sign, build, or publish.
-- It does **not** compute compliance, queue scores, popularity, or candidate priority.
+- It does **not** compute queue scores, popularity, or candidate priority.
 - If provenance metadata such as `bundle.json` is ever retained, it is a kitchen-side artifact only and must never be included in a target registry PR.
 
 ## Templates and scripts are policy, not a model
@@ -83,15 +83,18 @@ Install and run the deterministic gate from a clean checkout:
 
 ```sh
 npm ci --ignore-scripts --no-audit --no-fund
+npm test
 npm run check
 ```
 
-`npm run check` runs the full deterministic test suite (`node --test`): package facts, the recipe-result schema and semantic validator, the renderer and its rejection paths, the golden SemVer recipe, the registry-contract snapshot, and the `drafted` / `needs_human` evaluation fixtures.
-`npm test` runs the same suite; CI runs both.
+`npm test` runs the deterministic test suite (`node --test`): package facts, the recipe-result schema and semantic validator, the renderer and its rejection paths, the golden SemVer recipe, the registry contract, and the `drafted` / `needs_human` evaluation fixtures.
+`npm run check` runs the config consistency gates (`.fullsend` role declarations and harness files).
+CI runs both.
 
 The internal modules are separated by responsibility (facts, validator, renderer, template) on purpose; each seam is independently tested.
 
 ## Fullsend
 
-Fullsend orchestration in `.fullsend/` and the managed workflow in `.github/workflows/fullsend.yaml` remain installed but **inactive**: `kill_switch: true` is set in `.fullsend/config.yaml`.
-Activation is a separate, explicitly authorized step and is not part of preparing this repository.
+Fullsend drives the drafting run: the `npm-recipe-draft` harness in `.fullsend/` and the managed workflow in `.github/workflows/fullsend.yaml`.
+A `/fs-onboard <name@version>` comment triggers the harness, which resolves facts (pre-script), runs the sandboxed agent, and validates + renders the result (post-script).
+`kill_switch` in `.fullsend/config.yaml` disables all dispatch when set to `true`.

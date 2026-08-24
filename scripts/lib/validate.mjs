@@ -3,13 +3,7 @@ import { readFileSync } from 'node:fs';
 
 const ajv = new Ajv({ allErrors: true });
 
-const CONTRACT_NAMES = [
-  'catalog',
-  'compliance',
-  'queue',
-  'recipe-result',
-  'registry-snapshot',
-];
+const CONTRACT_NAMES = ['recipe-result'];
 
 const validators = new Map();
 for (const name of CONTRACT_NAMES) {
@@ -18,66 +12,13 @@ for (const name of CONTRACT_NAMES) {
   validators.set(name, ajv.compile(schema));
 }
 
-/**
- * Semantic invariants that JSON Schema cannot express cleanly.
- *
- * compliance:
- *   - closure_gaps ⊆ production_closure
- *   - direct_required ⊆ production_closure
- *
- * queue:
- *   - immediate_l3_unlocks ⊆ affected_packages  (per entry)
- *   - keys of gap_reductions ⊆ affected_packages (per entry)
- *
- * recipe-result:
- *   - each parameter value's JS type must match its declared type field
- */
-
+// Semantic invariant JSON Schema can't express: each parameter value's JS type
+// must match its declared `type` field.
 const PARAM_TYPE_CHECKS = {
   string: (v) => typeof v === 'string',
   boolean: (v) => typeof v === 'boolean',
   integer: (v) => typeof v === 'number' && Number.isInteger(v),
 };
-
-function subsetErrors(child, parent, childPath, parentName) {
-  const parentSet = new Set(parent);
-  const errors = [];
-  for (let i = 0; i < child.length; i++) {
-    if (!parentSet.has(child[i])) {
-      errors.push({
-        path: `${childPath}/${i}`,
-        message: `"${child[i]}" must appear in ${parentName}`,
-      });
-    }
-  }
-  return errors;
-}
-
-function validateComplianceSemantics(data) {
-  return [
-    ...subsetErrors(data.closure_gaps, data.production_closure, '/closure_gaps', 'production_closure'),
-    ...subsetErrors(data.direct_required, data.production_closure, '/direct_required', 'production_closure'),
-  ];
-}
-
-function validateQueueSemantics(data) {
-  const errors = [];
-  for (let i = 0; i < data.entries.length; i++) {
-    const entry = data.entries[i];
-    errors.push(
-      ...subsetErrors(entry.immediate_l3_unlocks, entry.affected_packages, `/entries/${i}/immediate_l3_unlocks`, 'affected_packages'),
-    );
-    for (const key of Object.keys(entry.gap_reductions)) {
-      if (!entry.affected_packages.includes(key)) {
-        errors.push({
-          path: `/entries/${i}/gap_reductions/${key}`,
-          message: `gap_reductions key "${key}" must appear in affected_packages`,
-        });
-      }
-    }
-  }
-  return errors;
-}
 
 function validateRecipeResultSemantics(data) {
   if (data.status !== 'drafted' || !data.parameters) return [];
@@ -95,8 +36,6 @@ function validateRecipeResultSemantics(data) {
 }
 
 const semanticValidators = new Map([
-  ['compliance', validateComplianceSemantics],
-  ['queue', validateQueueSemantics],
   ['recipe-result', validateRecipeResultSemantics],
 ]);
 

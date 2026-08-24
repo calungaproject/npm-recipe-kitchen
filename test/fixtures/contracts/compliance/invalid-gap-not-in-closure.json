@@ -1,7 +1,0 @@
-{
-  "schema_version": 1,
-  "consumer": "my-app@1.0.0",
-  "direct_required": ["semver@7.7.2"],
-  "production_closure": ["semver@7.7.2"],
-  "closure_gaps": ["phantom@0.0.1"]
-}
