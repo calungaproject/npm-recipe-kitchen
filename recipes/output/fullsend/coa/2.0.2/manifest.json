@@ -1,0 +1,24 @@
+{
+  "name": "coa",
+  "version": "2.0.2",
+  "description": "Command-Option-Argument parser for command line options",
+  "native_tier": "A",
+  "source": {
+    "url": "https://github.com/veged/coa.git",
+    "ref": "e891bbf583a4e22395f877bfd03dd2ff64bdc73b",
+    "ref_type": "commit"
+  },
+  "upstream_npm": {
+    "version": "2.0.2"
+  },
+  "entrypoint": "build.entrypoint.sh",
+  "smoke": "verify.smoke.sh",
+  "outputs": [
+    {
+      "id": "main",
+      "type": "npm-package",
+      "path": "out/coa-2.0.2.tgz",
+      "pulp_name": "coa"
+    }
+  ]
+}
