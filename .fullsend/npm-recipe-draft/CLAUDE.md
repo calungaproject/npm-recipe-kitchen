@@ -26,17 +26,21 @@ this sandbox, with credentials you do not have) and copied in for you to read.
 Its path is in the `RECIPE_INPUT_FILE` environment variable
 (`/sandbox/workspace/recipe-input.json`). Read it first:
 
-    cat "$RECIPE_INPUT_FILE"
+cat "$RECIPE_INPUT_FILE"
 
 It has this shape:
 
-    { "identity": "name@version",
-      "facts_available": true,
-      "facts": { "source": { "git_url": ..., "commit_sha": ... }, "upstream": {...}, "provenance": {...}, "could_not_verify": [...] } }
+```json
+{ "identity": "name@version",
+  "facts_available": true,
+  "facts": { "source": { "git_url": ..., "commit_sha": ... }, "upstream": {...}, "provenance": {...}, "could_not_verify": [...] } }
+```
 
 or, when no deterministic facts exist for the package:
 
-    { "identity": "...", "facts_available": false, "reason_code": "<STABLE_CODE>", "reason": "..." }
+```json
+{ "identity": "...", "facts_available": false, "reason_code": "<STABLE_CODE>", "reason": "..." }
+```
 
 The `facts_available: false` form may additionally carry `input_error: true` (a
 missing/invalid requested identity) or `blocked: true` (the registry contract
@@ -47,7 +51,9 @@ alongside the human-readable `reason`.
 The `identity` is a bounded package identity in the form `name@version`, e.g.
 `semver@7.7.2` or `@scope/pkg@1.2.3`, matching:
 
-    ^(@[a-z0-9][a-z0-9._-]*/)?[a-z0-9][a-z0-9._-]*@\d+\.\d+\.\d+$
+```
+^(@[a-z0-9][a-z0-9._-]*/)?[a-z0-9][a-z0-9._-]*@\d+\.\d+\.\d+$
+```
 
 Rules for the input:
 - If `facts_available` is `false` (or the file is missing/unreadable, or the
@@ -72,27 +78,29 @@ Omitting `schema_version` or `package` fails the deterministic schema check and 
 
 A drafted result has this shape:
 
-    {
-      "schema_version": 1,
-      "package": "semver@7.7.2",
-      "status": "drafted",
-      "template_id": "tier-a-npm-pack-no-build-v1",
-      "parameters": {
-        "package_name":         { "type": "string",  "value": "semver" },
-        "package_version":      { "type": "string",  "value": "7.7.2" },
-        "description":          { "type": "string",  "value": "The semantic versioner for npm" },
-        "source_url":           { "type": "string",  "value": "https://github.com/npm/node-semver.git" },
-        "source_ref":           { "type": "string",  "value": "281055e7716ef0415a8826972471331989ede58c" },
-        "source_tag":           { "type": "string",  "value": "v7.7.2" },
-        "upstream_npm_version": { "type": "string",  "value": "7.7.2" },
-        "has_cli":              { "type": "boolean", "value": true },
-        "cli_bin_path":         { "type": "string",  "value": "bin/semver.js" },
-        "main_entry":           { "type": "string",  "value": "index.js" }
-      },
-      "evidence": [ { "kind": "...", "detail": "..." } ],
-      "confidence": 0.9,
-      "could_not_verify": []
-    }
+```json
+{
+  "schema_version": 1,
+  "package": "semver@7.7.2",
+  "status": "drafted",
+  "template_id": "tier-a-npm-pack-no-build-v1",
+  "parameters": {
+    "package_name":         { "type": "string",  "value": "semver" },
+    "package_version":      { "type": "string",  "value": "7.7.2" },
+    "description":          { "type": "string",  "value": "The semantic versioner for npm" },
+    "source_url":           { "type": "string",  "value": "https://github.com/npm/node-semver.git" },
+    "source_ref":           { "type": "string",  "value": "281055e7716ef0415a8826972471331989ede58c" },
+    "source_tag":           { "type": "string",  "value": "v7.7.2" },
+    "upstream_npm_version": { "type": "string",  "value": "7.7.2" },
+    "has_cli":              { "type": "boolean", "value": true },
+    "cli_bin_path":         { "type": "string",  "value": "bin/semver.js" },
+    "main_entry":           { "type": "string",  "value": "index.js" }
+  },
+  "evidence": [ { "kind": "...", "detail": "..." } ],
+  "confidence": 0.9,
+  "could_not_verify": []
+}
+```
 
 ### Required `parameters` for a drafted result
 
@@ -133,13 +141,15 @@ Do not add any `parameters` keys beyond those listed above.
 
 A needs_human result has this shape:
 
-    {
-      "schema_version": 1,
-      "package": "semver@7.7.2",
-      "status": "needs_human",
-      "reason": "...",
-      "escalation_target": "..."
-    }
+```json
+{
+  "schema_version": 1,
+  "package": "semver@7.7.2",
+  "status": "needs_human",
+  "reason": "...",
+  "escalation_target": "..."
+}
+```
 
 Rules:
 - Emit only a reviewed `template_id` and bounded typed parameters.
