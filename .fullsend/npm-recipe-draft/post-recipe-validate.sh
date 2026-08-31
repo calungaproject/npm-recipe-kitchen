@@ -110,14 +110,13 @@ if (outcome.audit_path) {
   console.log(`[post-validate] Fact-bundle audit artifact: ${outcome.audit_path}`);
 }
 
-// Hand the outcome to the bash post-actions. `output_dir` is the absolute
-// rendered bundle path (recipes/output/fullsend/<pkg>/<version>) — the ONLY
-// path a drafted PR git-adds. Empty for needs_human/input_error (nothing
-// renders). The reason text goes to the separate body file.
+// Hand the outcome to the bash post-actions.
 writeFileSync(statusFile, JSON.stringify({
   status: outcome.status,
   identity: outcome.identity ?? '',
   output_dir: outcome.rendered?.output_dir ?? '',
+  audit_path: outcome.audit_path ?? '',
+  draft_source_dir: outcome.draft_source_dir ?? '',
 }) + '\n', 'utf-8');
 writeFileSync(commentBodyFile, (outcome.message ?? '') + '\n', 'utf-8');
 VALIDATE_EOF
@@ -132,9 +131,11 @@ echo "[post-validate] Passed"
 # post-code.sh, so unless we act here no PR is ever opened.
 #
 #   drafted                   -> branch, add ONLY the rendered bundle, commit,
-#                                push, open a PR against $TARGET_BRANCH.
-#   needs_human / input_error -> render nothing; post the reason as an issue
-#                                comment. No branch/commit/push/PR.
+#                                push, open a PR against npm-registry.
+#   needs_human               -> stage a review draft under recipes/drafts/ on
+#                                the kitchen repo, open a review-only PR there,
+#                                and post the reason on the triggering issue.
+#   input_error               -> post the reason as an issue comment only.
 #
 # We run via the leaner harness-run job (role `coder`, /fs-onboard trigger), not
 # the stock `code` job, so ISSUE_NUMBER, TARGET_BRANCH, and the git committer
@@ -192,11 +193,13 @@ ensure_git_identity() {
 status="$(json_field status)"
 identity="$(json_field identity)"
 output_dir="$(json_field output_dir)"
+audit_path="$(json_field audit_path)"
+draft_source_dir="$(json_field draft_source_dir)"
 
-# Resolve the publish context, preferring stock env names then harness-run
-# sources: ISSUE_NUMBER from STATUS_NUMBER or the issue URL's trailing segment;
-# TARGET_BRANCH defaults to main (work_item events carry no base branch).
-REPO_FULL_NAME="${REPO_FULL_NAME:-${STATUS_REPO:-}}"
+# Registry PR target (drafted → npm-registry). Kitchen repo (needs_human draft PR
+# + issue comments). Fall back to harness env names for backward compatibility.
+REGISTRY_REPO_FULL_NAME="${REGISTRY_REPO_FULL_NAME:-${REPO_FULL_NAME:-}}"
+KITCHEN_REPO_FULL_NAME="${KITCHEN_REPO_FULL_NAME:-${STATUS_REPO:-${REPO_FULL_NAME:-}}}"
 ISSUE_NUMBER="${ISSUE_NUMBER:-${STATUS_NUMBER:-}}"
 if [[ -z "${ISSUE_NUMBER}" && -n "${GITHUB_ISSUE_URL:-}" ]]; then
     ISSUE_NUMBER="${GITHUB_ISSUE_URL##*/}"
@@ -205,10 +208,10 @@ TARGET_BRANCH="${TARGET_BRANCH:-main}"
 
 case "${status}" in
     drafted)
-        require_env PUSH_TOKEN     "push the recipe bundle"
-        require_env REPO_FULL_NAME "push the recipe bundle"
-        require_env ISSUE_NUMBER   "open the recipe PR"
-        require_env TARGET_BRANCH  "open the recipe PR"
+        require_env PUSH_TOKEN              "push the recipe bundle"
+        require_env REGISTRY_REPO_FULL_NAME "push the recipe bundle"
+        require_env ISSUE_NUMBER            "open the recipe PR"
+        require_env TARGET_BRANCH           "open the recipe PR"
         if [[ -z "${identity}" || -z "${output_dir}" ]]; then
             echo "[post-validate] drafted outcome is missing identity/output_dir; refusing to open a PR" >&2
             exit 1
@@ -230,12 +233,12 @@ case "${status}" in
             # artifact lives under REPO_ROOT (gitignored) and is not in this tree.
             git add -- "${output_dir}"
             git commit -m "npm-recipe: onboard ${identity}" -m "Assisted-by: Claude"
-            git remote set-url origin "https://x-access-token:${PUSH_TOKEN}@github.com/${REPO_FULL_NAME}.git"
+            git remote set-url origin "https://x-access-token:${PUSH_TOKEN}@github.com/${REGISTRY_REPO_FULL_NAME}.git"
             if ! git push -u origin -- "${branch}"; then
                 git push -u origin --force-with-lease -- "${branch}"
             fi
             GH_TOKEN="${PUSH_TOKEN}" gh pr create \
-                --repo "${REPO_FULL_NAME}" \
+                --repo "${REGISTRY_REPO_FULL_NAME}" \
                 --head "${branch}" \
                 --base "${TARGET_BRANCH}" \
                 --title "npm-recipe: onboard ${identity}" \
@@ -246,15 +249,78 @@ Rendered from trusted deterministic facts by the npm-recipe-draft gate."
         echo "[post-validate] Recipe PR opened for ${identity}"
         ;;
 
-    needs_human|input_error)
-        # No bundle renders for these outcomes, so there is nothing to push. Post
-        # the reason back to the triggering issue instead.
-        require_env REPO_FULL_NAME "comment on the issue"
-        require_env ISSUE_NUMBER   "comment on the issue"
-        require_env PUSH_TOKEN     "comment on the issue"
-        echo "[post-validate] ${status} outcome for ${identity:-<unknown>}: posting an issue comment, no PR"
+    needs_human)
+        require_env KITCHEN_REPO_FULL_NAME "comment on the issue"
+        require_env ISSUE_NUMBER           "comment on the issue"
+        require_env PUSH_TOKEN             "comment on the issue"
+        echo "[post-validate] needs_human outcome for ${identity:-<unknown>}: posting issue comment"
         GH_TOKEN="${PUSH_TOKEN}" gh issue comment "${ISSUE_NUMBER}" \
-            --repo "${REPO_FULL_NAME}" \
+            --repo "${KITCHEN_REPO_FULL_NAME}" \
+            --body-file "${comment_body_file}"
+
+        if [[ -z "${identity}" ]]; then
+            echo "[post-validate] needs_human without identity; no draft PR to open"
+            exit 0
+        fi
+
+        draft_rel="$(REPO_ROOT="${REPO_ROOT}" IDENTITY="${identity}" \
+            DRAFT_SOURCE_DIR="${draft_source_dir}" RESULT_FILE="${result_file}" \
+            AUDIT_PATH="${audit_path}" REASON_FILE="${comment_body_file}" \
+            node --input-type=module <<'STAGE_EOF'
+import { readFileSync } from 'node:fs';
+import { pathToFileURL } from 'node:url';
+
+const repoRoot = process.env.REPO_ROOT;
+const modUrl = pathToFileURL(`${repoRoot}/scripts/lib/stage-recipe-draft.mjs`).href;
+const { stageRecipeDraft } = await import(modUrl);
+
+const reason = readFileSync(process.env.REASON_FILE, 'utf-8');
+const { draftRel } = stageRecipeDraft({
+  kitchenRoot: repoRoot,
+  identity: process.env.IDENTITY,
+  draftSourceDir: process.env.DRAFT_SOURCE_DIR || '',
+  resultPath: process.env.RESULT_FILE || '',
+  auditPath: process.env.AUDIT_PATH || '',
+  reason,
+});
+process.stdout.write(draftRel);
+STAGE_EOF
+        )"
+
+        branch="agent/${ISSUE_NUMBER}-npm-recipe-draft-$(sanitize_ref "${identity}")"
+        echo "[post-validate] Opening kitchen review draft PR for ${identity} on branch ${branch}"
+
+        (
+            cd -- "${REPO_ROOT}"
+            ensure_git_identity
+            git checkout -B "${branch}"
+            git add -- "${draft_rel}"
+            git commit -m "npm-recipe: draft ${identity} (needs_human)" -m "Assisted-by: Claude"
+            git remote set-url origin "https://x-access-token:${PUSH_TOKEN}@github.com/${KITCHEN_REPO_FULL_NAME}.git"
+            if ! git push -u origin -- "${branch}"; then
+                git push -u origin --force-with-lease -- "${branch}"
+            fi
+            GH_TOKEN="${PUSH_TOKEN}" gh pr create \
+                --repo "${KITCHEN_REPO_FULL_NAME}" \
+                --head "${branch}" \
+                --base "${TARGET_BRANCH}" \
+                --title "npm-recipe: draft ${identity} (needs_human)" \
+                --body "Review-only draft for \`${identity}\` (fixes #${ISSUE_NUMBER}).
+
+This PR is **not** for \`calungaproject/npm-registry\`. It stages agent output under \`recipes/drafts/\` for human review after a \`needs_human\` outcome.
+
+$(cat -- "${comment_body_file}")"
+        )
+        echo "[post-validate] Kitchen review draft PR opened for ${identity}"
+        ;;
+
+    input_error)
+        require_env KITCHEN_REPO_FULL_NAME "comment on the issue"
+        require_env ISSUE_NUMBER           "comment on the issue"
+        require_env PUSH_TOKEN             "comment on the issue"
+        echo "[post-validate] input_error outcome for ${identity:-<unknown>}: posting an issue comment, no PR"
+        GH_TOKEN="${PUSH_TOKEN}" gh issue comment "${ISSUE_NUMBER}" \
+            --repo "${KITCHEN_REPO_FULL_NAME}" \
             --body-file "${comment_body_file}"
         echo "[post-validate] Issue comment posted; no recipe bundle to publish"
         ;;

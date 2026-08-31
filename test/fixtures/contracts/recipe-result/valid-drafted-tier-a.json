@@ -1,27 +1,12 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "package": "semver@7.7.2",
   "status": "drafted",
-  "template_id": "tier-a-npm-pack-no-build-v1",
-  "parameters": {
-    "package_name": { "type": "string", "value": "semver" },
-    "package_version": { "type": "string", "value": "7.7.2" },
-    "description": { "type": "string", "value": "The semantic versioner for npm" },
-    "source_url": { "type": "string", "value": "https://github.com/npm/node-semver.git" },
-    "source_ref": { "type": "string", "value": "281055e7716ef0415a8826972471331989ede58c" },
-    "source_tag": { "type": "string", "value": "v7.7.2" },
-    "upstream_npm_version": { "type": "string", "value": "7.7.2" },
-    "has_cli": { "type": "boolean", "value": true },
-    "cli_bin_path": { "type": "string", "value": "bin/semver.js" },
-    "main_entry": { "type": "string", "value": "index.js" }
-  },
+  "native_tier": "A",
   "evidence": [
-    { "kind": "source-inspection", "detail": "No build, prepare, prepack, or prepublishOnly script in package.json" },
-    { "kind": "pack-test", "detail": "npm pack --ignore-scripts produces semver-7.7.2.tgz with package/package.json, package/index.js, package/bin/semver.js" },
-    { "kind": "provenance", "detail": "SLSA v1 provenance attestation present on npm" },
-    { "kind": "tag-match", "detail": "Tag v7.7.2 resolves to commit 281055e7716ef0415a8826972471331989ede58c" }
+    { "kind": "source-inspection", "detail": "Reviewed upstream repo layout and pack output." }
   ],
-  "confidence": 0.92,
+  "confidence": 0.9,
   "could_not_verify": [
     "SLSA attestation signature chain not independently verified"
   ]

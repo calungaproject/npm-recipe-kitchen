@@ -1,16 +1,13 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "package": "semver@7.7.2",
   "status": "drafted",
-  "template_id": "source-build",
-  "parameters": {
-    "source_url": { "type": "string", "value": "https://github.com/npm/node-semver.git" },
-    "ref": { "type": "string", "value": "v7.7.2" },
-    "run_tests": { "type": "boolean", "value": true }
-  },
+  "native_tier": "A",
   "evidence": [
-    { "kind": "test-result", "detail": "All 123 upstream tests pass" }
+    { "kind": "source-inspection", "detail": "Reviewed upstream repo layout and pack output." }
   ],
-  "confidence": 0.95,
-  "could_not_verify": ["no fuzz tests available"]
+  "confidence": 0.9,
+  "could_not_verify": [
+    "SLSA attestation signature chain not independently verified"
+  ]
 }

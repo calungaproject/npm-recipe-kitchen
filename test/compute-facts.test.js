@@ -243,20 +243,23 @@ describe('computeFacts — package/policy outcomes (needs_human, facts_available
     assert.equal(out.reason_code, REASON.UNVERIFIED_SOURCE_ASSOCIATION);
   });
 
-  it('COMPLEX_EXPORTS bubbles up from classification', async () => {
+  it('COMPLEX_EXPORTS is recorded in classification but still produces a bundle', async () => {
     const out = await computeFacts('foo@1.2.3', makeOptions({ adapters: {
       packedPackageJson: { name: 'foo', version: '1.2.3', exports: { '.': './i.js', './x': './x.js' } },
     } }));
-    assert.equal(out.status, 'needs_human');
-    assert.equal(out.reason_code, REASON.COMPLEX_EXPORTS);
+    assert.equal(out.status, 'ok');
+    assert.equal(out.bundle.classification.tier_a_eligible, false);
+    assert.equal(out.bundle.classification.reason_code, REASON.COMPLEX_EXPORTS);
   });
 
-  it('NATIVE_OR_BUILD_INDICATORS for binding.gyp in source', async () => {
+  it('NATIVE_OR_BUILD_INDICATORS is recorded in classification but still produces a bundle', async () => {
     const out = await computeFacts('foo@1.2.3', makeOptions({ adapters: {
       sourceFiles: ['package.json', 'index.js', 'binding.gyp'],
     } }));
-    assert.equal(out.status, 'needs_human');
-    assert.equal(out.reason_code, REASON.NATIVE_OR_BUILD_INDICATORS);
+    assert.equal(out.status, 'ok');
+    assert.equal(out.bundle.classification.tier_a_eligible, false);
+    assert.equal(out.bundle.classification.reason_code, REASON.NATIVE_OR_BUILD_INDICATORS);
+    assert.equal(out.bundle.classification.native_tier, 'C');
   });
 });
 
@@ -274,6 +277,7 @@ describe('computeFacts — successful bundles', () => {
     assert.equal(b.source.resolution_method, 'verified_provenance');
     assert.equal(b.registry.provenance_status, 'verified');
     assert.equal(b.registry_contract_sha, FAKE_CONTRACT_SHA);
+    assert.equal(b.classification.tier_a_eligible, true);
     assert.equal(b.classification.template_id, TIER_A_TEMPLATE_ID);
     assert.equal(b.upstream.has_cli, false);
     assert.equal(b.digests.tarball_sha256.length, 64);

@@ -12,9 +12,9 @@ This repository consumes that order; it does not discover, score, or re-prioriti
 
 **Out:** exactly one of two bounded results per candidate.
 
-- `drafted` — a recipe bundle of four fixed files (`manifest.json`, `build.entrypoint.sh`, `verify.smoke.sh`, `evidence.md`) plus review evidence.
-- `needs_human` — evidence only, with **no** rendered recipe files and **no** patch.
-  `needs_human` is a successful, bounded refusal, not a failed run.
+- `drafted` — validated recipe under `packages/<name>/<version>/` on **npm-registry** (PR opened there).
+- `needs_human` — bounded refusal with reason; best-effort draft staged under `recipes/drafts/<name>/<version>/` on **this kitchen repo** for review-only PR. No npm-registry PR.
+  `needs_human` is a successful, bounded outcome, not a failed run.
 
 Between in and out sit two deterministic, non-model gates:
 

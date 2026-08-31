@@ -5,10 +5,25 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import Ajv2020 from 'ajv/dist/2020.js';
 import { render, RenderError, ALLOWED_BASE } from '../scripts/lib/renderer.mjs';
+import { buildParametersFromFacts } from '../scripts/lib/fact-bundle.mjs';
+import { semverFacts } from './helpers/fixture-facts.mjs';
 
 function loadFixture(name) {
   const path = new URL(`fixtures/contracts/recipe-result/${name}.json`, import.meta.url);
   return JSON.parse(readFileSync(path, 'utf-8'));
+}
+
+function legacyRenderFixture(over = {}) {
+  const facts = semverFacts();
+  return {
+    status: 'drafted',
+    template_id: 'tier-a-npm-pack-no-build-v1',
+    parameters: over.parameters ?? buildParametersFromFacts(facts, { description: 'semver' }),
+    evidence: over.evidence ?? [{ kind: 'x', detail: 'y' }],
+    confidence: over.confidence ?? 0.9,
+    could_not_verify: over.could_not_verify ?? facts.could_not_verify,
+    ...over,
+  };
 }
 
 function loadGoldenManifest() {
@@ -31,7 +46,7 @@ describe('renderer', () => {
   describe('valid drafted result', () => {
     it('generates all four output files', () => {
       withTempRepo((repoRoot) => {
-        const result = render(loadFixture('valid-drafted-tier-a'), repoRoot);
+        const result = render(legacyRenderFixture(), repoRoot);
         assert.deepStrictEqual(result.files.sort(), [
           'build.entrypoint.sh',
           'evidence.md',
@@ -45,7 +60,7 @@ describe('renderer', () => {
 
     it('generated manifest has required structural fields matching golden', () => {
       withTempRepo((repoRoot) => {
-        const result = render(loadFixture('valid-drafted-tier-a'), repoRoot);
+        const result = render(legacyRenderFixture(), repoRoot);
         const generated = JSON.parse(readFileSync(join(result.output_dir, 'manifest.json'), 'utf-8'));
         const golden = loadGoldenManifest();
 
@@ -65,7 +80,7 @@ describe('renderer', () => {
 
     it('build entrypoint contains SHA verification', () => {
       withTempRepo((repoRoot) => {
-        const result = render(loadFixture('valid-drafted-tier-a'), repoRoot);
+        const result = render(legacyRenderFixture(), repoRoot);
         const script = readFileSync(join(result.output_dir, 'build.entrypoint.sh'), 'utf-8');
         assert.ok(script.includes('git clone --no-checkout'));
         assert.ok(script.includes('git checkout'));
@@ -78,7 +93,7 @@ describe('renderer', () => {
 
     it('verify smoke script validates tarball', () => {
       withTempRepo((repoRoot) => {
-        const result = render(loadFixture('valid-drafted-tier-a'), repoRoot);
+        const result = render(legacyRenderFixture(), repoRoot);
         const script = readFileSync(join(result.output_dir, 'verify.smoke.sh'), 'utf-8');
         assert.ok(script.includes('package/package.json'));
         assert.ok(script.includes('npm install'));
@@ -88,7 +103,7 @@ describe('renderer', () => {
 
     it('evidence.md contains package identity and source info', () => {
       withTempRepo((repoRoot) => {
-        const result = render(loadFixture('valid-drafted-tier-a'), repoRoot);
+        const result = render(legacyRenderFixture(), repoRoot);
         const evidence = readFileSync(join(result.output_dir, 'evidence.md'), 'utf-8');
         assert.ok(evidence.includes('semver@7.7.2'));
         assert.ok(evidence.includes('281055e7716ef0415a8826972471331989ede58c'));
@@ -98,7 +113,7 @@ describe('renderer', () => {
 
     it('shell scripts are executable', () => {
       withTempRepo((repoRoot) => {
-        const result = render(loadFixture('valid-drafted-tier-a'), repoRoot);
+        const result = render(legacyRenderFixture(), repoRoot);
         accessSync(join(result.output_dir, 'build.entrypoint.sh'), fsConstants.X_OK);
         accessSync(join(result.output_dir, 'verify.smoke.sh'), fsConstants.X_OK);
       });
@@ -108,7 +123,7 @@ describe('renderer', () => {
   describe('template_id rejection', () => {
     it('rejects unsupported template_id', () => {
       withTempRepo((repoRoot) => {
-        const fixture = loadFixture('valid-drafted-tier-a');
+        const fixture = legacyRenderFixture();
         fixture.template_id = 'source-build';
         assert.throws(() => render(fixture, repoRoot), RenderError);
       });
@@ -116,7 +131,7 @@ describe('renderer', () => {
 
     it('rejects arbitrary template_id', () => {
       withTempRepo((repoRoot) => {
-        const fixture = loadFixture('valid-drafted-tier-a');
+        const fixture = legacyRenderFixture();
         fixture.template_id = 'custom-malicious-template';
         assert.throws(() => render(fixture, repoRoot), RenderError);
       });
@@ -137,7 +152,7 @@ describe('renderer', () => {
   describe('path traversal', () => {
     it('rejects .. in package_name', () => {
       withTempRepo((repoRoot) => {
-        const fixture = loadFixture('valid-drafted-tier-a');
+        const fixture = legacyRenderFixture();
         fixture.parameters.package_name.value = '../../../etc/passwd';
         assert.throws(() => render(fixture, repoRoot), RenderError);
       });
@@ -145,7 +160,7 @@ describe('renderer', () => {
 
     it('rejects .. in package_version', () => {
       withTempRepo((repoRoot) => {
-        const fixture = loadFixture('valid-drafted-tier-a');
+        const fixture = legacyRenderFixture();
         fixture.parameters.package_version.value = '1.0.0/../../etc';
         assert.throws(() => render(fixture, repoRoot), RenderError);
       });
@@ -153,7 +168,7 @@ describe('renderer', () => {
 
     it('rejects absolute path in package_name', () => {
       withTempRepo((repoRoot) => {
-        const fixture = loadFixture('valid-drafted-tier-a');
+        const fixture = legacyRenderFixture();
         fixture.parameters.package_name.value = '/etc/passwd';
         assert.throws(() => render(fixture, repoRoot), RenderError);
       });
@@ -170,7 +185,7 @@ describe('renderer', () => {
         mkdirSync(join(fakeBase), { recursive: true });
         symlinkSync(realTarget, join(fakeBase, 'semver'));
 
-        const fixture = loadFixture('valid-drafted-tier-a');
+        const fixture = legacyRenderFixture();
         assert.throws(() => render(fixture, tmp), RenderError);
       } finally {
         rmSync(tmp, { recursive: true, force: true });
@@ -181,7 +196,7 @@ describe('renderer', () => {
   describe('control character rejection', () => {
     it('rejects NUL in parameter value', () => {
       withTempRepo((repoRoot) => {
-        const fixture = loadFixture('valid-drafted-tier-a');
+        const fixture = legacyRenderFixture();
         fixture.parameters.description.value = 'hello\x00world';
         assert.throws(() => render(fixture, repoRoot), RenderError);
       });
@@ -189,7 +204,7 @@ describe('renderer', () => {
 
     it('rejects control characters in parameter value', () => {
       withTempRepo((repoRoot) => {
-        const fixture = loadFixture('valid-drafted-tier-a');
+        const fixture = legacyRenderFixture();
         fixture.parameters.description.value = 'hello\x07world';
         assert.throws(() => render(fixture, repoRoot), RenderError);
       });
@@ -199,7 +214,7 @@ describe('renderer', () => {
   describe('unknown parameter rejection', () => {
     it('rejects parameters not in template spec', () => {
       withTempRepo((repoRoot) => {
-        const fixture = loadFixture('valid-drafted-tier-a');
+        const fixture = legacyRenderFixture();
         fixture.parameters.evil_command = { type: 'string', value: 'rm -rf /' };
         assert.throws(() => render(fixture, repoRoot), RenderError);
       });
@@ -209,7 +224,7 @@ describe('renderer', () => {
   describe('oversized value rejection', () => {
     it('rejects description exceeding max length', () => {
       withTempRepo((repoRoot) => {
-        const fixture = loadFixture('valid-drafted-tier-a');
+        const fixture = legacyRenderFixture();
         fixture.parameters.description.value = 'x'.repeat(501);
         assert.throws(() => render(fixture, repoRoot), RenderError);
       });
@@ -217,7 +232,7 @@ describe('renderer', () => {
 
     it('rejects source_ref with wrong length', () => {
       withTempRepo((repoRoot) => {
-        const fixture = loadFixture('valid-drafted-tier-a');
+        const fixture = legacyRenderFixture();
         fixture.parameters.source_ref.value = 'abc123';
         assert.throws(() => render(fixture, repoRoot), RenderError);
       });
@@ -227,7 +242,7 @@ describe('renderer', () => {
   describe('structural comparison with golden recipe', () => {
     it('generated manifest validates against the same registry schema as golden', () => {
       withTempRepo((repoRoot) => {
-        const result = render(loadFixture('valid-drafted-tier-a'), repoRoot);
+        const result = render(legacyRenderFixture(), repoRoot);
         const generated = JSON.parse(readFileSync(join(result.output_dir, 'manifest.json'), 'utf-8'));
         const registrySchema = JSON.parse(readFileSync(
           new URL('fixtures/registry-contract/017ebd5a3c5fef6d595f7c852fd584a7d5fae255/manifest.schema.json', import.meta.url),
@@ -242,7 +257,7 @@ describe('renderer', () => {
 
     it('build entrypoint does not contain unsupported commands', () => {
       withTempRepo((repoRoot) => {
-        const result = render(loadFixture('valid-drafted-tier-a'), repoRoot);
+        const result = render(legacyRenderFixture(), repoRoot);
         const script = readFileSync(join(result.output_dir, 'build.entrypoint.sh'), 'utf-8');
         const forbidden = ['npm publish', 'npm login', 'npm adduser', 'curl ', 'wget ', 'eval '];
         for (const cmd of forbidden) {
@@ -253,7 +268,7 @@ describe('renderer', () => {
 
     it('smoke script does not contain unsupported commands', () => {
       withTempRepo((repoRoot) => {
-        const result = render(loadFixture('valid-drafted-tier-a'), repoRoot);
+        const result = render(legacyRenderFixture(), repoRoot);
         const script = readFileSync(join(result.output_dir, 'verify.smoke.sh'), 'utf-8');
         const forbidden = ['npm publish', 'npm login', 'curl ', 'wget ', 'eval '];
         for (const cmd of forbidden) {

@@ -55,8 +55,11 @@ pre_script: npm-recipe-draft/pre-recipe-facts.sh
 env:
     runner:
         FULLSEND_OUTPUT_FILE: recipe-result.json
+        REGISTRY_REPO_FULL_NAME: calungaproject/npm-registry
+        KITCHEN_REPO_FULL_NAME: calungaproject/npm-recipe-kitchen
     sandbox:
         RECIPE_INPUT_FILE: /sandbox/workspace/recipe-input.json
+        RECIPE_PACKAGES_BASE: packages
 
 # Deterministic safety gate. Runs on the runner after the agent exits; a
 # non-zero exit blocks the result. It re-runs the semantic validator (schema +

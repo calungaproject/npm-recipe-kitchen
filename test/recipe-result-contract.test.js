@@ -29,10 +29,10 @@ describe('recipe-result', () => {
     assert.strictEqual(result.valid, true, JSON.stringify(result.errors));
   });
 
-  it('rejects an unknown template_id', () => {
+  it('rejects an invalid native_tier', () => {
     const result = validate('recipe-result', loadFixture('recipe-result', 'invalid-unknown-template'));
     assert.strictEqual(result.valid, false);
-    assert.ok(result.errors.some(e => e.path.includes('template_id')));
+    assert.ok(result.errors.some(e => e.path.includes('native_tier')));
   });
 
   it('rejects drafted with needs_human fields present', () => {
@@ -44,17 +44,9 @@ describe('recipe-result', () => {
 
   it('rejects needs_human with drafted fields present', () => {
     const human = loadFixture('recipe-result', 'valid-needs-human');
-    human.template_id = 'source-build';
+    human.native_tier = 'A';
     const result = validate('recipe-result', human);
     assert.strictEqual(result.valid, false);
-  });
-
-  it('rejects a parameter whose value type mismatches its declared type (semantic)', () => {
-    const doc = loadFixture('recipe-result', 'valid-drafted');
-    doc.parameters.bad = { type: 'integer', value: 'not-a-number' };
-    const result = validate('recipe-result', doc);
-    assert.strictEqual(result.valid, false);
-    assert.ok(result.errors.some(e => e.path.includes('/parameters/bad/value')));
   });
 
   it('rejects confidence outside 0-1', () => {
@@ -73,10 +65,10 @@ describe('recipe-result', () => {
 
   it('rejects a reason that exceeds the bound', () => {
     const result = validate('recipe-result', {
-      schema_version: 1,
+      schema_version: 2,
       package: 'pkg@1.0.0',
       status: 'needs_human',
-      reason: 'x'.repeat(501),
+      reason: 'x'.repeat(2001),
       escalation_target: 'team',
     });
     assert.strictEqual(result.valid, false);

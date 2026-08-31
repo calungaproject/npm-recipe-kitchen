@@ -38,6 +38,12 @@ export const SEMVER_FACTS = {
     'SLSA attestation signature chain not independently verified',
   ],
   native_tier: 'A',
+  classification: {
+    tier_a_eligible: true,
+    native_tier: 'A',
+    template_id: 'tier-a-npm-pack-no-build-v1',
+    reasons: [],
+  },
   registry_contract_sha: '017ebd5a3c5fef6d595f7c852fd584a7d5fae255',
 };
 

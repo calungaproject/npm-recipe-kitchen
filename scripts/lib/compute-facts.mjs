@@ -29,7 +29,7 @@
 
 import { createHash } from 'node:crypto';
 
-import { FACT_BUNDLE_SCHEMA_VERSION } from './fact-bundle.mjs';
+import { FACT_BUNDLE_SCHEMA_VERSION } from './fact-bundle-constants.mjs';
 import { TEMPLATE_ID as TIER_A_TEMPLATE_ID } from './templates/tier-a-npm-pack-no-build-v1.mjs';
 import { isValidRegistryContractSha } from './registry-contract.mjs';
 
@@ -289,18 +289,101 @@ export function classifyTierA({ name, version, unscoped, sourcePackageJson, sour
     template_id: TIER_A_TEMPLATE_ID,
     native_tier: 'A',
     reasons,
-    upstream: {
-      has_build_step: false,
-      has_lifecycle_scripts: hasLifecycle,
-      has_native_indicators: false,
-      has_cli: cliRes.has_cli === true,
-      cli_bin_name: cliRes.has_cli ? cliRes.cli_bin_name : null,
-      cli_bin_path: cliRes.has_cli ? cliRes.cli_bin_path : null,
-      main_entry: mainEntry,
-      runtime: detectRuntime(packedPackageJson, mainEntry),
-      upstream_npm_version: version,
-    },
+    upstream: buildUpstreamSummary({
+      version,
+      sourcePackageJson,
+      packedPackageJson,
+      packedFiles,
+      unscoped,
+      hasLifecycle,
+      hasNativeIndicators: false,
+      mainEntry,
+      cliRes,
+    }),
   };
+}
+
+/**
+ * Best-effort upstream snapshot from inspected source + packed tarball.
+ * Used when Tier A template eligibility fails but facts are still useful.
+ */
+export function extractUpstreamSnapshot({
+  version,
+  sourcePackageJson,
+  sourceFiles,
+  packedPackageJson,
+  packedFiles,
+  unscoped,
+}) {
+  const scripts = sourcePackageJson.scripts || {};
+  const buildScripts = BUILD_LIFECYCLE.filter(s => typeof scripts[s] === 'string' && scripts[s].length > 0);
+  const installScripts = INSTALL_LIFECYCLE.filter(s => typeof scripts[s] === 'string' && scripts[s].length > 0);
+  const hasLifecycle = buildScripts.length > 0 || installScripts.length > 0;
+  const hasBindingGyp = sourceFiles.includes('binding.gyp');
+  const hasNodeArtifact = packedFiles.some(f => f.endsWith('.node')) || sourceFiles.some(f => f.endsWith('.node'));
+  const gypInScripts = Object.values(scripts).some(s => typeof s === 'string' && /node-gyp|prebuild|node-pre-gyp/.test(s));
+  const hasNativeIndicators = hasBindingGyp || hasNodeArtifact || gypInScripts;
+
+  const mainRes = resolveMainEntry(packedPackageJson);
+  const mainEntry = mainRes.status === 'ok' ? mainRes.main_entry : null;
+  const cliRes = resolveCli(packedPackageJson, unscoped);
+
+  return buildUpstreamSummary({
+    version,
+    sourcePackageJson,
+    packedPackageJson,
+    packedFiles,
+    unscoped,
+    hasLifecycle,
+    hasNativeIndicators,
+    hasBuildStep: buildScripts.length > 0,
+    mainEntry,
+    mainEntryStatus: mainRes.status ?? 'ok',
+    cliRes,
+    optionalDependencies: packedPackageJson.optionalDependencies ?? {},
+  });
+}
+
+function buildUpstreamSummary({
+  version,
+  packedPackageJson,
+  hasLifecycle,
+  hasNativeIndicators,
+  hasBuildStep = false,
+  mainEntry,
+  mainEntryStatus = 'ok',
+  cliRes,
+  optionalDependencies = {},
+}) {
+  const hasCli = cliRes?.has_cli === true;
+  return {
+    has_build_step: hasBuildStep,
+    has_lifecycle_scripts: hasLifecycle,
+    has_native_indicators: hasNativeIndicators,
+    has_platform_optional_deps: detectPlatformOptionalDeps(optionalDependencies),
+    has_cli: hasCli,
+    cli_bin_name: hasCli ? cliRes.cli_bin_name : null,
+    cli_bin_path: hasCli ? cliRes.cli_bin_path : null,
+    main_entry: mainEntry,
+    main_entry_status: mainEntryStatus,
+    runtime: mainEntry ? detectRuntime(packedPackageJson, mainEntry) : null,
+    upstream_npm_version: version,
+  };
+}
+
+function detectPlatformOptionalDeps(optionalDependencies) {
+  return Object.keys(optionalDependencies).some(k => /linux-x64|darwin-|win32-|android-|freebsd-|openbsd-|sunos-|@esbuild\/|@img\/|@next\/swc-/i.test(k));
+}
+
+/**
+ * Heuristic native tier hint for the recipe agent. Not authoritative — the model
+ * must still justify tier choice in evidence.
+ */
+export function suggestNativeTier(upstream) {
+  if (!upstream || typeof upstream !== 'object') return null;
+  if (upstream.has_platform_optional_deps) return 'B';
+  if (upstream.has_native_indicators) return 'C';
+  return 'A';
 }
 
 // ---------------------------------------------------------------------------
@@ -507,13 +590,36 @@ export async function computeFacts(identity, options = {}) {
     packedPackageJson: sourcePackedJson,
     packedFiles: sourcePackedFiles,
   });
-  if (!classification.eligible) {
-    return { status: 'needs_human', reason_code: classification.reason_code, reason: classification.reason };
-  }
 
-  evidence.push({ kind: 'pack-test', detail: `npm pack --ignore-scripts from ${commitSha} produced ${name}-${version}.tgz with the expected entrypoints` });
-  if (classification.upstream.has_cli) {
-    evidence.push({ kind: 'cli', detail: `CLI bin "${classification.upstream.cli_bin_name}" -> ${classification.upstream.cli_bin_path}` });
+  const upstream = classification.eligible
+    ? classification.upstream
+    : extractUpstreamSnapshot({
+      version,
+      sourcePackageJson,
+      sourceFiles,
+      packedPackageJson: sourcePackedJson,
+      packedFiles: sourcePackedFiles,
+      unscoped,
+    });
+
+  const suggestedTier = classification.eligible
+    ? classification.native_tier
+    : suggestNativeTier(upstream);
+
+  evidence.push({
+    kind: 'pack-test',
+    detail: classification.eligible
+      ? `npm pack --ignore-scripts from ${commitSha} produced ${name}-${version}.tgz with the expected entrypoints`
+      : `inspected source checkout at ${commitSha} and packed layout for ${name}@${version}`,
+  });
+  if (upstream.has_cli) {
+    evidence.push({ kind: 'cli', detail: `CLI bin "${upstream.cli_bin_name}" -> ${upstream.cli_bin_path}` });
+  }
+  if (!classification.eligible) {
+    evidence.push({
+      kind: 'tier-a-ineligible',
+      detail: `${classification.reason_code}: ${classification.reason}`,
+    });
   }
 
   const bundle = {
@@ -537,14 +643,22 @@ export async function computeFacts(identity, options = {}) {
       tag_matches_version: true,
       resolution_method: resolutionMethod,
     },
-    upstream: classification.upstream,
+    upstream,
     classification: {
-      eligible: true,
-      native_tier: classification.native_tier,
-      template_id: classification.template_id,
-      reasons: classification.reasons,
+      tier_a_eligible: classification.eligible,
+      native_tier: suggestedTier,
+      ...(classification.eligible
+        ? {
+          template_id: classification.template_id,
+          reasons: classification.reasons,
+        }
+        : {
+          reason_code: classification.reason_code,
+          reason: classification.reason,
+          reasons: [],
+        }),
     },
-    native_tier: classification.native_tier,
+    native_tier: suggestedTier,
     registry_contract_sha: registryContractSha,
     could_not_verify: couldNotVerify,
     evidence,
