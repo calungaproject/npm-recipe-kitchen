@@ -54,7 +54,7 @@ pre_script: npm-recipe-draft/pre-recipe-facts.sh
 # for post-recipe-validate.sh.
 validation_loop:
     script: npm-recipe-draft/validate-recipe-result.sh
-    schema: ../../schemas/recipe-result.schema.json
+    schema: ../npm-recipe-draft/schemas/recipe-result.schema.json
     max_iterations: 2
 
 # Agent I/O env. FULLSEND_OUTPUT_FILE names the result file the agent writes and

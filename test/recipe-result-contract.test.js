@@ -74,3 +74,14 @@ describe('recipe-result', () => {
     assert.strictEqual(result.valid, false);
   });
 });
+
+describe('recipe-result schema copies', () => {
+  it('keeps the fullsend harness schema in sync with schemas/recipe-result.schema.json', () => {
+    const root = readFileSync(new URL('../schemas/recipe-result.schema.json', import.meta.url), 'utf-8');
+    const harness = readFileSync(
+      new URL('../.fullsend/npm-recipe-draft/schemas/recipe-result.schema.json', import.meta.url),
+      'utf-8',
+    );
+    assert.strictEqual(harness, root);
+  });
+});
