@@ -80,7 +80,17 @@ Follow the skill docs above and canonical examples in `calungaproject/npm-regist
 
 ### 2. Result JSON (always)
 
-Write a single JSON object to `$FULLSEND_OUTPUT_DIR/$FULLSEND_OUTPUT_FILE` (`recipe-result.json`).
+Write a single JSON object to **`$FULLSEND_OUTPUT_DIR/$FULLSEND_OUTPUT_FILE`** only.
+
+- Default path: `/sandbox/workspace/output/recipe-result.json`
+- **Do not** write `recipe-result.json` at `/sandbox/workspace/` (fullsend will not extract it).
+
+Before finishing, verify:
+
+```bash
+test -f "$FULLSEND_OUTPUT_DIR/$FULLSEND_OUTPUT_FILE" && jq -e . "$FULLSEND_OUTPUT_DIR/$FULLSEND_OUTPUT_FILE" >/dev/null
+```
+
 No markdown fences. Schema version **2**.
 
 **Drafted:**
@@ -132,5 +142,6 @@ Do not claim the recipe is production-ready when status is `needs_human`. Post-v
 3. Parse `identity` into npm `name` and `version`.
 4. Use `facts.classification.native_tier` as a hint only — verify by inspecting upstream repo layout (clone/read in sandbox if needed).
 5. Draft `manifest.json`, then `build.entrypoint.sh`, then `verify.smoke.sh` (+ `tl-install.js` if needed) when you can; on `needs_human` after inspection, still write whatever partial draft helps human review.
-6. Write `recipe-result.json` with `status: drafted` or `needs_human` and matching `native_tier` when drafted.
-7. Do not write any other output files.
+6. Write `recipe-result.json` with `status: drafted` or `needs_human` and matching `native_tier` when drafted — **only** under `$FULLSEND_OUTPUT_DIR/` (not workspace root).
+7. Run `test -f "$FULLSEND_OUTPUT_DIR/$FULLSEND_OUTPUT_FILE"` before exit.
+8. Do not write any other output files.
