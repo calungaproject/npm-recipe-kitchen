@@ -21,7 +21,7 @@ jobs:
       github.event.issue != null
       && github.event.comment.user.type != 'Bot'
       && github.event.comment.body != ''
-      && matches(split(github.event.comment.body, '\n')[0], '^/fs-onboard(\s|$)')
+      && matches(split(github.event.comment.body, '\n')[0], '^/fs-onboard(\s.*)?$')
     runs-on: ubuntu-24.04
     concurrency:
       group: fullsend-harness-npm-recipe-draft-${{ github.repository }}-${{ github.event.issue.number }}
