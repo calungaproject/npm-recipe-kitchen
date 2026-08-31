@@ -12,33 +12,6 @@ for (const name of CONTRACT_NAMES) {
   validators.set(name, ajv.compile(schema));
 }
 
-// Semantic invariant JSON Schema can't express: each parameter value's JS type
-// must match its declared `type` field.
-const PARAM_TYPE_CHECKS = {
-  string: (v) => typeof v === 'string',
-  boolean: (v) => typeof v === 'boolean',
-  integer: (v) => typeof v === 'number' && Number.isInteger(v),
-};
-
-function validateRecipeResultSemantics(data) {
-  if (data.status !== 'drafted' || !data.parameters) return [];
-  const errors = [];
-  for (const [name, param] of Object.entries(data.parameters)) {
-    const check = PARAM_TYPE_CHECKS[param.type];
-    if (check && !check(param.value)) {
-      errors.push({
-        path: `/parameters/${name}/value`,
-        message: `value must be a ${param.type}, got ${typeof param.value}`,
-      });
-    }
-  }
-  return errors;
-}
-
-const semanticValidators = new Map([
-  ['recipe-result', validateRecipeResultSemantics],
-]);
-
 export function validate(contractName, data) {
   const schemaValidator = validators.get(contractName);
   if (!schemaValidator) {
@@ -55,13 +28,6 @@ export function validate(contractName, data) {
         message: e.message,
         params: e.params,
       });
-    }
-  }
-
-  if (valid) {
-    const semanticFn = semanticValidators.get(contractName);
-    if (semanticFn) {
-      errors.push(...semanticFn(data));
     }
   }
 

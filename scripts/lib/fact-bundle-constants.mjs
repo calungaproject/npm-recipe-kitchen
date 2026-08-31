@@ -1,0 +1,1 @@
+export const FACT_BUNDLE_SCHEMA_VERSION = 1;

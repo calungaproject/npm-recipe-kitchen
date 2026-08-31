@@ -6,15 +6,9 @@ import { tmpdir } from 'node:os';
 
 import { runPostValidation } from '../scripts/lib/post-validate.mjs';
 import { computeFacts, toAgentInput } from '../scripts/lib/compute-facts.mjs';
-import { buildParametersFromFacts, deriveAuthoritative } from '../scripts/lib/fact-bundle.mjs';
 import { makeOptions } from './helpers/collector-fakes.mjs';
 import { semverFacts } from './helpers/fixture-facts.mjs';
-
-// ---------------------------------------------------------------------------
-// Harness: everything drives the REAL runPostValidation entrypoint (the module
-// post-recipe-validate.sh invokes), reading the exact recipe-input.json the
-// pre-path would have written and rendering into a throwaway repo root.
-// ---------------------------------------------------------------------------
+import { writeMinimalTierARecipe, draftResultFromFacts } from './helpers/recipe-bundle-fixture.mjs';
 
 let work;
 beforeEach(() => { work = mkdtempSync(join(tmpdir(), 'nrk-post-')); });
@@ -39,147 +33,87 @@ function writeResult(obj) {
   return resultPath;
 }
 
-/**
- * Build a well-formed model `drafted` result that MATCHES a bundle. Tests then
- * tamper with a single field to prove the post-path re-binds to trusted facts.
- * The model is authoritative only for `description`; every other parameter here
- * is what an honest model would have echoed from the trusted bundle.
- */
-function draftResultFromBundle(bundle, over = {}) {
-  const a = deriveAuthoritative(bundle);
-  const parameters = buildParametersFromFacts(bundle, { description: 'a package' });
-  return {
-    schema_version: 1,
-    package: a.identity,
-    status: 'drafted',
-    template_id: over.template_id ?? a.template_id,
-    parameters: over.parameters ?? parameters,
-    evidence: over.evidence ?? [{ kind: 'source-inspection', detail: 'inspected' }],
-    confidence: over.confidence ?? 0.9,
-    could_not_verify: over.could_not_verify ?? a.could_not_verify,
-  };
-}
-
 async function collectorBundle(identity = 'foo@1.2.3', adapters = {}) {
   const out = await computeFacts(identity, makeOptions({ adapters }));
   assert.equal(out.status, 'ok', `expected ok bundle, got ${JSON.stringify(out)}`);
   return out.bundle;
 }
 
-function run(inputPath, resultPath) {
+function run(inputPath, resultPath, renderRoot = work) {
   return runPostValidation({
     resultPath,
     inputPath,
     repoRoot: work,
+    renderRoot,
     auditDir: join(work, 'audit'),
   });
 }
 
-// ---------------------------------------------------------------------------
-
-describe('runPostValidation — drafted (happy paths render from trusted facts)', () => {
-  it('renders a fact-bundle package end-to-end', async () => {
+describe('runPostValidation — drafted (agent-authored recipe bundle)', () => {
+  it('accepts a valid recipe bundle end-to-end', async () => {
     const bundle = semverFacts();
+    bundle.classification = { tier_a_eligible: true, native_tier: 'A' };
     const inputPath = writeInputFromOutcome('semver@7.7.2', { status: 'ok', bundle });
-    const resultPath = writeResult(draftResultFromBundle(bundle));
+    writeMinimalTierARecipe(work, bundle);
+    const resultPath = writeResult(draftResultFromFacts(bundle));
 
     const res = run(inputPath, resultPath);
     assert.equal(res.ok, true, JSON.stringify(res));
     assert.equal(res.status, 'drafted');
-    assert.deepEqual(res.rendered.files.sort(), ['build.entrypoint.sh', 'evidence.md', 'manifest.json', 'verify.smoke.sh']);
-    // Rendered manifest carries the trusted source SHA, not a model-supplied one.
+    assert.ok(res.rendered.files.includes('manifest.json'));
     const manifest = JSON.parse(readFileSync(join(res.rendered.output_dir, 'manifest.json'), 'utf-8'));
-    assert.equal(manifest.source.ref, '281055e7716ef0415a8826972471331989ede58c');
+    assert.equal(manifest.name, 'semver');
     assert.ok(existsSync(res.audit_path));
   });
 
-  it('renders a collector-produced bundle end-to-end', async () => {
-    const bundle = await collectorBundle();
+  it('still collects facts when binding.gyp is present (Tier C hint)', async () => {
+    const bundle = await collectorBundle('foo@1.2.3', {
+      sourceFiles: ['package.json', 'index.js', 'binding.gyp'],
+    });
+    assert.equal(bundle.classification.tier_a_eligible, false);
+    assert.equal(bundle.classification.native_tier, 'C');
+    writeMinimalTierARecipe(work, bundle);
     const inputPath = writeInputFromOutcome('foo@1.2.3', { status: 'ok', bundle });
-    const resultPath = writeResult(draftResultFromBundle(bundle));
+    const resultPath = writeResult(draftResultFromFacts(bundle, { native_tier: 'A' }));
 
     const res = run(inputPath, resultPath);
     assert.equal(res.ok, true, JSON.stringify(res));
     assert.equal(res.status, 'drafted');
-    assert.equal(res.rendered.template_id, 'tier-a-npm-pack-no-build-v1');
   });
 
-  it('ignores a model-supplied source_ref and renders the trusted one', async () => {
-    // Prove the renderer uses authoritative params, not model echoes: the model
-    // still emits a MATCHING ref (so validation passes) but we assert the
-    // rendered artifact is bound to the bundle regardless.
+  it('rejects when manifest name does not match trusted facts', async () => {
     const bundle = await collectorBundle();
+    writeMinimalTierARecipe(work, bundle);
     const inputPath = writeInputFromOutcome('foo@1.2.3', { status: 'ok', bundle });
-    const resultPath = writeResult(draftResultFromBundle(bundle));
-    const res = run(inputPath, resultPath);
-    const manifest = JSON.parse(readFileSync(join(res.rendered.output_dir, 'manifest.json'), 'utf-8'));
-    assert.equal(manifest.source.ref, bundle.source.commit_sha);
-  });
-});
-
-describe('runPostValidation — a tampered authoritative field is always rejected', () => {
-  const mutations = [
-    ['package_name', p => { p.package_name.value = 'bar'; }, 'package_name-fact-match'],
-    ['package_version', p => { p.package_version.value = '9.9.9'; }, 'package_version-fact-match'],
-    ['source_url', p => { p.source_url.value = 'https://github.com/evil/repo.git'; }, 'source_url-fact-match'],
-    ['source_ref', p => { p.source_ref.value = 'a'.repeat(40); }, 'source-sha-match'],
-    ['source_tag', p => { p.source_tag.value = 'v9.9.9'; }, 'source_tag-fact-match'],
-    ['main_entry', p => { p.main_entry.value = 'other.js'; }, 'main_entry-fact-match'],
-    ['upstream_npm_version', p => { p.upstream_npm_version.value = '9.9.9'; }, 'upstream_npm_version-fact-match'],
-    ['has_cli', p => { p.has_cli.value = true; }, 'has_cli-fact-match'],
-  ];
-
-  for (const [label, mutate, expectedCheck] of mutations) {
-    it(`rejects a changed ${label}`, async () => {
-      const bundle = await collectorBundle();
-      const inputPath = writeInputFromOutcome('foo@1.2.3', { status: 'ok', bundle });
-      const result = draftResultFromBundle(bundle);
-      mutate(result.parameters);
-      const resultPath = writeResult(result);
-
-      const res = run(inputPath, resultPath);
-      assert.equal(res.ok, false, JSON.stringify(res));
-      assert.equal(res.reason_code, 'RESULT_REJECTED');
-      assert.ok(res.errors.some(e => e.check === expectedCheck), `expected ${expectedCheck}, got ${JSON.stringify(res.errors)}`);
-    });
-  }
-
-  it('rejects an added cli_bin_path when the trusted facts report no CLI', async () => {
-    const bundle = await collectorBundle();
-    const inputPath = writeInputFromOutcome('foo@1.2.3', { status: 'ok', bundle });
-    const result = draftResultFromBundle(bundle);
-    result.parameters.cli_bin_path = { type: 'string', value: 'bin/x.js' };
-    const resultPath = writeResult(result);
+    const manifestPath = join(work, 'packages', 'foo', '1.2.3', 'manifest.json');
+    const manifest = JSON.parse(readFileSync(manifestPath, 'utf-8'));
+    manifest.name = 'bar';
+    writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + '\n');
+    const resultPath = writeResult(draftResultFromFacts(bundle));
 
     const res = run(inputPath, resultPath);
     assert.equal(res.ok, false);
-    assert.ok(res.errors.some(e => e.check === 'cli_bin_path-should-be-absent'));
+    assert.equal(res.reason_code, 'RECIPE_BUNDLE_REJECTED');
+    assert.ok(res.errors.some(e => e.check === 'manifest-name-fact-match'));
   });
 
-  it('rejects a changed cli_bin_path for a CLI package', async () => {
-    const bundle = await collectorBundle('foo@1.2.3', {
-      packedPackageJson: { name: 'foo', version: '1.2.3', main: 'index.js', bin: { mytool: 'bin/run.js' } },
-      packedFiles: ['package.json', 'index.js', 'bin/run.js'],
-    });
+  it('rejects when recipe bundle directory is missing', async () => {
+    const bundle = await collectorBundle();
     const inputPath = writeInputFromOutcome('foo@1.2.3', { status: 'ok', bundle });
-    const result = draftResultFromBundle(bundle);
-    result.parameters.cli_bin_path.value = 'bin/evil.js';
-    const resultPath = writeResult(result);
+    const resultPath = writeResult(draftResultFromFacts(bundle));
 
     const res = run(inputPath, resultPath);
     assert.equal(res.ok, false);
-    assert.ok(res.errors.some(e => e.check === 'cli_bin_path-fact-match'));
+    assert.equal(res.reason_code, 'RECIPE_BUNDLE_REJECTED');
   });
 
   it('rejects dropping a trusted could_not_verify observation', async () => {
-    // A tag_only association is accepted by default and carries a trusted
-    // could_not_verify caveat; the model may not drop it.
     const out = await computeFacts('foo@1.2.3', makeOptions({ adapters: { provenanceStatus: 'absent' } }));
     assert.equal(out.status, 'ok');
     assert.ok(out.bundle.could_not_verify.length > 0);
+    writeMinimalTierARecipe(work, out.bundle);
     const inputPath = writeInputFromOutcome('foo@1.2.3', out);
-    const result = draftResultFromBundle(out.bundle, { could_not_verify: [] });
-    const resultPath = writeResult(result);
+    const resultPath = writeResult(draftResultFromFacts(out.bundle, { could_not_verify: [] }));
 
     const res = run(inputPath, resultPath);
     assert.equal(res.ok, false);
@@ -187,33 +121,35 @@ describe('runPostValidation — a tampered authoritative field is always rejecte
   });
 });
 
-describe('runPostValidation — template binding', () => {
-  it('rejects a template_id different from the bundle eligibility template', async () => {
-    const bundle = await collectorBundle();
-    const inputPath = writeInputFromOutcome('foo@1.2.3', { status: 'ok', bundle });
-    const result = draftResultFromBundle(bundle, { template_id: 'source-build' });
-    const resultPath = writeResult(result);
-
-    const res = run(inputPath, resultPath);
-    assert.equal(res.ok, false);
-    assert.equal(res.reason_code, 'RESULT_REJECTED');
-    assert.ok(res.errors.some(e => e.check === 'template-eligibility-mismatch'));
-  });
-});
-
 describe('runPostValidation — drafted is impossible without an exact valid bundle', () => {
   it('refuses to draft when facts are unavailable', async () => {
     const inputPath = writeInput({ identity: 'foo@1.2.3', facts_available: false, reason_code: 'PACKAGE_NOT_FOUND', reason: 'x' });
-    const resultPath = writeResult({ schema_version: 1, package: 'foo@1.2.3', status: 'drafted', template_id: 'tier-a-npm-pack-no-build-v1', parameters: {}, evidence: [{ kind: 'x', detail: 'y' }], confidence: 0.9, could_not_verify: [] });
+    const resultPath = writeResult({
+      schema_version: 2,
+      package: 'foo@1.2.3',
+      status: 'drafted',
+      native_tier: 'A',
+      evidence: [{ kind: 'x', detail: 'y' }],
+      confidence: 0.9,
+      could_not_verify: [],
+    });
 
     const res = run(inputPath, resultPath);
     assert.equal(res.ok, false);
     assert.equal(res.reason_code, 'DRAFT_WITHOUT_FACTS');
   });
 
-  it('refuses to draft on an input_error (never asks the model to fabricate identity)', async () => {
+  it('refuses to draft on an input_error', async () => {
     const inputPath = writeInput({ identity: 'bad', facts_available: false, input_error: true, reason_code: 'INVALID_IDENTITY', reason: 'x' });
-    const resultPath = writeResult({ schema_version: 1, package: 'foo@1.2.3', status: 'drafted', template_id: 'tier-a-npm-pack-no-build-v1', parameters: {}, evidence: [{ kind: 'x', detail: 'y' }], confidence: 0.9, could_not_verify: [] });
+    const resultPath = writeResult({
+      schema_version: 2,
+      package: 'foo@1.2.3',
+      status: 'drafted',
+      native_tier: 'A',
+      evidence: [{ kind: 'x', detail: 'y' }],
+      confidence: 0.9,
+      could_not_verify: [],
+    });
 
     const res = run(inputPath, resultPath);
     assert.equal(res.ok, false);
@@ -221,51 +157,59 @@ describe('runPostValidation — drafted is impossible without an exact valid bun
   });
 
   it('refuses when the fact bundle file is missing entirely', () => {
-    const resultPath = writeResult({ schema_version: 1, package: 'foo@1.2.3', status: 'needs_human', reason: 'x', escalation_target: 'team' });
+    const resultPath = writeResult({ schema_version: 2, package: 'foo@1.2.3', status: 'needs_human', reason: 'x', escalation_target: 'team' });
     const res = run(join(work, 'does-not-exist.json'), resultPath);
     assert.equal(res.ok, false);
     assert.equal(res.reason_code, 'MISSING_FACT_BUNDLE');
   });
-
-  it('refuses when the bundle fails validation', async () => {
-    const bundle = await collectorBundle();
-    bundle.source.commit_sha = 'short'; // corrupt an authoritative field
-    const inputPath = writeInputFromOutcome('foo@1.2.3', { status: 'ok', bundle });
-    const resultPath = writeResult(draftResultFromBundle(bundle));
-    const res = run(inputPath, resultPath);
-    assert.equal(res.ok, false);
-    assert.equal(res.reason_code, 'INVALID_FACT_BUNDLE');
-  });
 });
 
-describe('runPostValidation — needs_human and input_error (no render, bound identity)', () => {
-  it('accepts a needs_human result for an unknown package and renders nothing', async () => {
+describe('runPostValidation — needs_human and input_error', () => {
+  it('accepts needs_human for an unknown package and does not require recipe files', async () => {
     const out = await computeFacts('foo@1.2.3', makeOptions({ adapters: { getPackument: async () => null } }));
     assert.equal(out.status, 'needs_human');
     const inputPath = writeInputFromOutcome('foo@1.2.3', out);
-    const resultPath = writeResult({ schema_version: 1, package: 'foo@1.2.3', status: 'needs_human', reason: 'not found', escalation_target: 'team' });
+    const resultPath = writeResult({ schema_version: 2, package: 'foo@1.2.3', status: 'needs_human', reason: 'not found', escalation_target: 'team' });
 
     const res = run(inputPath, resultPath);
     assert.equal(res.ok, true, JSON.stringify(res));
     assert.equal(res.status, 'needs_human');
     assert.equal(res.rendered, undefined);
-    assert.ok(!existsSync(join(work, 'recipes', 'output', 'fullsend')), 'needs_human must not render recipe files');
+    assert.equal(res.draft_source_dir, '');
+    assert.ok(!existsSync(join(work, 'packages', 'foo', '1.2.3')));
   });
 
-  it('rejects a needs_human result that re-targets a different identity', async () => {
+  it('reports draft_source_dir when agent wrote a best-effort bundle on needs_human', async () => {
+    const bundle = semverFacts();
+    const inputPath = writeInputFromOutcome('semver@7.7.2', { status: 'ok', bundle });
+    writeMinimalTierARecipe(work, bundle);
+    const resultPath = writeResult({
+      schema_version: 2,
+      package: 'semver@7.7.2',
+      status: 'needs_human',
+      reason: 'tier unclear',
+      escalation_target: 'npm-tl-onboarding',
+    });
+
+    const res = run(inputPath, resultPath);
+    assert.equal(res.ok, true, JSON.stringify(res));
+    assert.equal(res.status, 'needs_human');
+    assert.equal(res.draft_source_dir, join(work, 'packages', 'semver', '7.7.2'));
+  });
+
+  it('rejects needs_human that re-targets a different identity', async () => {
     const out = await computeFacts('foo@1.2.3', makeOptions({ adapters: { getPackument: async () => null } }));
     const inputPath = writeInputFromOutcome('foo@1.2.3', out);
-    const resultPath = writeResult({ schema_version: 1, package: 'other@2.0.0', status: 'needs_human', reason: 'x', escalation_target: 'team' });
+    const resultPath = writeResult({ schema_version: 2, package: 'other@2.0.0', status: 'needs_human', reason: 'x', escalation_target: 'team' });
 
     const res = run(inputPath, resultPath);
     assert.equal(res.ok, false);
-    assert.equal(res.reason_code, 'RESULT_REJECTED');
     assert.ok(res.errors.some(e => e.check === 'identity-match'));
   });
 
-  it('accepts a needs_human result for an input_error identity', () => {
+  it('accepts needs_human for an input_error identity', () => {
     const inputPath = writeInput({ identity: 'bad', facts_available: false, input_error: true, reason_code: 'INVALID_IDENTITY', reason: 'bad identity' });
-    const resultPath = writeResult({ schema_version: 1, package: 'placeholder@0.0.0', status: 'needs_human', reason: 'bad identity', escalation_target: 'triage' });
+    const resultPath = writeResult({ schema_version: 2, package: 'placeholder@0.0.0', status: 'needs_human', reason: 'bad identity', escalation_target: 'triage' });
 
     const res = run(inputPath, resultPath);
     assert.equal(res.ok, true, JSON.stringify(res));
@@ -274,32 +218,32 @@ describe('runPostValidation — needs_human and input_error (no render, bound id
   });
 });
 
-describe('runPostValidation — audit artifact', () => {
-  it('persists the exact fact bundle as a kitchen-side audit artifact', async () => {
-    const bundle = await collectorBundle();
-    const inputPath = writeInputFromOutcome('foo@1.2.3', { status: 'ok', bundle });
-    const resultPath = writeResult(draftResultFromBundle(bundle));
+describe('stageRecipeDraft', () => {
+  it('copies agent output into recipes/drafts and writes REVIEW.md', async () => {
+    const { stageRecipeDraft } = await import('../scripts/lib/stage-recipe-draft.mjs');
+    const bundle = semverFacts();
+    writeMinimalTierARecipe(work, bundle);
+    const sourceDir = join(work, 'packages', 'semver', '7.7.2');
+    const resultPath = writeResult({
+      schema_version: 2,
+      package: 'semver@7.7.2',
+      status: 'needs_human',
+      reason: 'needs review',
+      escalation_target: 'npm-tl-onboarding',
+    });
 
-    const res = run(inputPath, resultPath);
-    assert.ok(res.audit_path && existsSync(res.audit_path));
-    const artifact = JSON.parse(readFileSync(res.audit_path, 'utf-8'));
-    assert.equal(artifact.outcome, 'drafted');
-    assert.equal(artifact.identity, 'foo@1.2.3');
-    // The audit artifact retains the WHOLE trusted bundle, byte-for-byte.
-    assert.deepEqual(artifact.fact_bundle, bundle);
-    assert.equal(artifact.fact_bundle.source.commit_sha, bundle.source.commit_sha);
-  });
+    const { draftDir, draftRel } = stageRecipeDraft({
+      kitchenRoot: work,
+      identity: 'semver@7.7.2',
+      draftSourceDir: sourceDir,
+      resultPath,
+      reason: 'needs review',
+    });
 
-  it('rejects an unknown result.status', async () => {
-    const bundle = await collectorBundle();
-    const inputPath = writeInputFromOutcome('foo@1.2.3', { status: 'ok', bundle });
-    const resultPath = writeResult({ schema_version: 1, package: 'foo@1.2.3', status: 'needs_human', reason: 'x', escalation_target: 't' });
-    // Corrupt status AFTER schema-shaping by writing a raw object with a bad status.
-    writeFileSync(resultPath, JSON.stringify({ schema_version: 1, package: 'foo@1.2.3', status: 'weird' }) + '\n');
-    const res = run(inputPath, resultPath);
-    assert.equal(res.ok, false);
-    // schema rejects 'weird' first when drafted-branch not taken; the module maps
-    // an unhandled status to UNKNOWN_STATUS.
-    assert.ok(['UNKNOWN_STATUS', 'RESULT_REJECTED'].includes(res.reason_code));
+    assert.equal(draftRel, join('recipes', 'drafts', 'semver', '7.7.2'));
+    assert.ok(existsSync(join(draftDir, 'manifest.json')));
+    assert.ok(existsSync(join(draftDir, 'recipe-result.json')));
+    assert.ok(existsSync(join(draftDir, 'REVIEW.md')));
+    assert.match(readFileSync(join(draftDir, 'REVIEW.md'), 'utf-8'), /needs review/);
   });
 });
