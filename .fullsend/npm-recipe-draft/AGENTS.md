@@ -11,6 +11,8 @@ Skill docs: `.fullsend/npm-recipe-draft/skills/npm-registry-recipe/`.
 
 Emit `recipe-result.json` schema version **2** with status `drafted` or `needs_human`.
 
+Write the result file only to `$FULLSEND_OUTPUT_DIR/$FULLSEND_OUTPUT_FILE` (default `/sandbox/workspace/output/recipe-result.json`). Never at `/sandbox/workspace/recipe-result.json`.
+
 ### every result
 
 - `schema_version`: `2`

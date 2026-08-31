@@ -48,6 +48,15 @@ host_files:
 # guard); the script derives the repo root from its own location.
 pre_script: npm-recipe-draft/pre-recipe-facts.sh
 
+# Inline validation loop (ADR 0022): fullsend extracts agent output only from
+# /sandbox/workspace/output/. This script fails fast (with retry) when the agent
+# writes recipe-result.json elsewhere, and sets FULLSEND_VALIDATED_ITERATION_DIR
+# for post-recipe-validate.sh.
+validation_loop:
+    script: npm-recipe-draft/validate-recipe-result.sh
+    schema: ../../schemas/recipe-result.schema.json
+    max_iterations: 2
+
 # Agent I/O env. FULLSEND_OUTPUT_FILE names the result file the agent writes and
 # the post-script reads. RECIPE_INPUT_FILE lets the agent reference its input by
 # variable instead of hard-coding the sandbox path; it must match the host_files
@@ -60,6 +69,8 @@ env:
     sandbox:
         RECIPE_INPUT_FILE: /sandbox/workspace/recipe-input.json
         RECIPE_PACKAGES_BASE: packages
+        FULLSEND_OUTPUT_DIR: /sandbox/workspace/output
+        FULLSEND_OUTPUT_FILE: recipe-result.json
 
 # Deterministic safety gate. Runs on the runner after the agent exits; a
 # non-zero exit blocks the result. It re-runs the semantic validator (schema +
