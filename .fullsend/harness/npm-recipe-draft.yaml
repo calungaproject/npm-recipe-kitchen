@@ -79,10 +79,7 @@ env:
 # guard and repo-root derivation as the pre-script.
 post_script: npm-recipe-draft/post-recipe-validate.sh
 
-# Dispatch trigger (CEL over the normalized event): the /fs-onboard command
-# comment on a work item. A harness with no trigger is manual-run-only.
-trigger: >
-  event.transition.kind == "comment_added"
-    && has(event.transition.comment.command)
-    && event.transition.comment.command == "/fs-onboard"
-    && event.entity.kind == "work_item"
+# Dispatch trigger intentionally omitted: /fs-onboard is handled by
+# .github/workflows/npm-recipe-onboard.yaml, which sets MINT_REPOS so the
+# coder PUSH_TOKEN is valid for both npm-recipe-kitchen and npm-registry.
+# Without that env var, post-recipe-validate.sh cannot push drafted bundles.
