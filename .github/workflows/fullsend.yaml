@@ -40,7 +40,11 @@ jobs:
        || github.event.comment.user.type != 'Bot')
       && (github.event_name != 'issue_comment'
        || github.event.comment.body == ''
-       || !matches(split(github.event.comment.body, '\n')[0], '^/fs-onboard(\s.*)?$'))
+       || !(
+         github.event.comment.body == '/fs-onboard'
+         || startsWith(github.event.comment.body, '/fs-onboard ')
+         || startsWith(github.event.comment.body, format('{0}\n', '/fs-onboard'))
+       ))
     permissions:
       actions: write
       id-token: write
