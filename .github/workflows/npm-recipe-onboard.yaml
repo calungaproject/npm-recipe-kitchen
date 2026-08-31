@@ -17,11 +17,17 @@ permissions: {}
 
 jobs:
   run:
+    # Job-level if must use only workflow-expression builtins (split/matches are
+    # unavailable here). Predicate mirrors pre-recipe-facts.sh: /fs-onboard as
+    # the first token on the first line. Authorize step re-checks with awk.
     if: >-
       github.event.issue != null
       && github.event.comment.user.type != 'Bot'
-      && github.event.comment.body != ''
-      && matches(split(github.event.comment.body, '\n')[0], '^/fs-onboard(\s.*)?$')
+      && (
+        github.event.comment.body == '/fs-onboard'
+        || startsWith(github.event.comment.body, '/fs-onboard ')
+        || startsWith(github.event.comment.body, format('{0}\n', '/fs-onboard'))
+      )
     runs-on: ubuntu-24.04
     concurrency:
       group: fullsend-harness-npm-recipe-draft-${{ github.repository }}-${{ github.event.issue.number }}
