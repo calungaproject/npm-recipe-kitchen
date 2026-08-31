@@ -170,6 +170,16 @@ sanitize_ref() {
     printf '%s' "${s}"
 }
 
+registry_push_token() {
+    # Prefer a dedicated registry token when the workflow provides one; fall
+    # back to PUSH_TOKEN (valid only when MINT_REPOS included npm-registry).
+    if [[ -n "${REGISTRY_PUSH_TOKEN:-}" ]]; then
+        printf '%s' "${REGISTRY_PUSH_TOKEN}"
+    else
+        printf '%s' "${PUSH_TOKEN}"
+    fi
+}
+
 ensure_git_identity() {
     # harness-run sets no committer identity, so `git commit` would fail. Resolve
     # the minted bot's identity via the GraphQL viewer (PUSH_TOKEN), falling back
@@ -209,6 +219,11 @@ TARGET_BRANCH="${TARGET_BRANCH:-main}"
 case "${status}" in
     drafted)
         require_env PUSH_TOKEN              "push the recipe bundle"
+        registry_token="$(registry_push_token)"
+        if [[ -z "${registry_token}" ]]; then
+            echo "[post-validate] registry push token is empty; set MINT_REPOS or REGISTRY_PUSH_TOKEN" >&2
+            exit 1
+        fi
         require_env REGISTRY_REPO_FULL_NAME "push the recipe bundle"
         require_env ISSUE_NUMBER            "open the recipe PR"
         require_env TARGET_BRANCH           "open the recipe PR"
@@ -233,11 +248,11 @@ case "${status}" in
             # artifact lives under REPO_ROOT (gitignored) and is not in this tree.
             git add -- "${output_dir}"
             git commit -m "npm-recipe: onboard ${identity}" -m "Assisted-by: Claude"
-            git remote set-url origin "https://x-access-token:${PUSH_TOKEN}@github.com/${REGISTRY_REPO_FULL_NAME}.git"
+            git remote set-url origin "https://x-access-token:${registry_token}@github.com/${REGISTRY_REPO_FULL_NAME}.git"
             if ! git push -u origin -- "${branch}"; then
                 git push -u origin --force-with-lease -- "${branch}"
             fi
-            GH_TOKEN="${PUSH_TOKEN}" gh pr create \
+            GH_TOKEN="${registry_token}" gh pr create \
                 --repo "${REGISTRY_REPO_FULL_NAME}" \
                 --head "${branch}" \
                 --base "${TARGET_BRANCH}" \

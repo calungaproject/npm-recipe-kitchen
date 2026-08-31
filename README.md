@@ -96,5 +96,5 @@ The internal modules are separated by responsibility (facts, validator, renderer
 ## Fullsend
 
 Fullsend drives the drafting run: the `npm-recipe-draft` harness in `.fullsend/` and the managed workflow in `.github/workflows/fullsend.yaml`.
-A `/fs-onboard <name@version>` comment triggers the harness, which resolves facts (pre-script), runs the sandboxed agent, and validates + renders the result (post-script).
+A `/fs-onboard <name@version>` comment is handled by `.github/workflows/npm-recipe-onboard.yaml`, which mints a coder token for both `npm-recipe-kitchen` and `npm-registry` before the post-script opens the registry PR.
 `kill_switch` in `.fullsend/config.yaml` disables all dispatch when set to `true`.
