@@ -55,6 +55,30 @@ describe('runner_repo_root', () => {
     mkdirSync(repoB);
     runHelperFails({ REPO_DIR: repoA, TARGET_REPO_DIR: repoB }, 'runner_repo_root');
   });
+
+  it('ignores stale TARGET_REPO_DIR when REPO_DIR points at the extracted tree', () => {
+    const repo = join(work, 'repo-g');
+    mkdirSync(repo);
+    assert.equal(
+      runHelper({ REPO_DIR: repo, TARGET_REPO_DIR: 'target-repo' }, 'runner_repo_root'),
+      realpathSync(repo),
+    );
+  });
+
+  it('falls back to /tmp/<run-basename> when REPO_DIR is unset', () => {
+    const runName = 'fs-npm-test-run';
+    const runDir = join(work, runName);
+    const downloadDir = join('/tmp', runName);
+    mkdirSync(runDir);
+    mkdirSync(downloadDir);
+    const out = execFileSync(
+      'bash',
+      ['-c', `source "${RECIPE_PATHS}" && runner_repo_root`],
+      { cwd: runDir, env: { ...process.env, TARGET_REPO_DIR: 'target-repo' }, encoding: 'utf-8' },
+    );
+    assert.equal(out.trim(), realpathSync(downloadDir));
+    rmSync(downloadDir, { recursive: true, force: true });
+  });
 });
 
 describe('runner_recipe_packages_dir', () => {
