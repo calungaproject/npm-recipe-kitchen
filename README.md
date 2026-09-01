@@ -94,6 +94,8 @@ The internal modules are separated by responsibility (facts, validator, renderer
 
 ## Fullsend
 
+See [docs/demo-end-to-end-flow.md](docs/demo-end-to-end-flow.md) for a concise walkthrough of recipes, both agents, and the Konflux → Pulp factory path (demo-oriented).
+
 Fullsend drives two agents in sequence:
 
 | Agent | Name | Trigger | Output |
