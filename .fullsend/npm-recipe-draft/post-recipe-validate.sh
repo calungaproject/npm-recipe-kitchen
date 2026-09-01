@@ -123,25 +123,12 @@ VALIDATE_EOF
 
 echo "[post-validate] Passed"
 
-# ---------------------------------------------------------------------------
 # Post-actions: publish the validated outcome.
 #
-# fullsend's `run` step doesn't commit/push/open PRs — it hands us the sandbox
-# working tree in REPO_DIR. A custom post_script fully replaces stock
-# post-code.sh, so unless we act here no PR is ever opened.
-#
-#   drafted                   -> branch, add ONLY the rendered bundle, commit,
-#                                push, open a PR against npm-registry.
-#   needs_human               -> stage a review draft under recipes/drafts/ on
-#                                the kitchen repo, open a review-only PR there,
-#                                and post the reason on the triggering issue.
-#   input_error               -> post the reason as an issue comment only.
-#
-# We run via the leaner harness-run job (role `coder`, /fs-onboard trigger), not
-# the stock `code` job, so ISSUE_NUMBER, TARGET_BRANCH, and the git committer
-# identity aren't exported — we derive them below. Required env vars are guarded;
-# a miss exits non-zero rather than open an empty PR.
-# ---------------------------------------------------------------------------
+# Credentials are split by status:
+#   drafted      -> REGISTRY_PUSH_TOKEN (optional fork) for npm-registry PR only
+#   needs_human  -> PUSH_TOKEN (minted fullsend bot) for kitchen issue comment + draft PR
+#   input_error  -> PUSH_TOKEN only (issue comment)
 
 json_field() {
     # Read a top-level string field from the status file via node (already a hard
@@ -170,15 +157,6 @@ sanitize_ref() {
     printf '%s' "${s}"
 }
 
-registry_push_token() {
-    # Prefer a dedicated registry token when the workflow provides one; fall
-    # back to PUSH_TOKEN (valid only when MINT_REPOS included npm-registry).
-    if [[ -n "${REGISTRY_PUSH_TOKEN:-}" ]]; then
-        printf '%s' "${REGISTRY_PUSH_TOKEN}"
-    else
-        printf '%s' "${PUSH_TOKEN}"
-    fi
-}
 
 ensure_git_identity() {
     # harness-run sets no committer identity, so `git commit` would fail. Resolve
@@ -209,6 +187,10 @@ draft_source_dir="$(json_field draft_source_dir)"
 # Registry PR target (drafted → npm-registry). Kitchen repo (needs_human draft PR
 # + issue comments). Fall back to harness env names for backward compatibility.
 REGISTRY_REPO_FULL_NAME="${REGISTRY_REPO_FULL_NAME:-${REPO_FULL_NAME:-}}"
+# Optional fork flow: push branch to REGISTRY_PUSH_REPO_FULL_NAME (e.g. your fork),
+# open the PR against REGISTRY_REPO_FULL_NAME (upstream). When unset, both use
+# REGISTRY_REPO_FULL_NAME (same-repo push + PR).
+REGISTRY_PUSH_REPO_FULL_NAME="${REGISTRY_PUSH_REPO_FULL_NAME:-${REGISTRY_REPO_FULL_NAME}}"
 KITCHEN_REPO_FULL_NAME="${KITCHEN_REPO_FULL_NAME:-${STATUS_REPO:-${REPO_FULL_NAME:-}}}"
 ISSUE_NUMBER="${ISSUE_NUMBER:-${STATUS_NUMBER:-}}"
 if [[ -z "${ISSUE_NUMBER}" && -n "${GITHUB_ISSUE_URL:-}" ]]; then
@@ -218,13 +200,13 @@ TARGET_BRANCH="${TARGET_BRANCH:-main}"
 
 case "${status}" in
     drafted)
-        require_env PUSH_TOKEN              "push the recipe bundle"
-        registry_token="$(registry_push_token)"
-        if [[ -z "${registry_token}" ]]; then
-            echo "[post-validate] registry push token is empty; set MINT_REPOS or REGISTRY_PUSH_TOKEN" >&2
-            exit 1
-        fi
-        require_env REGISTRY_REPO_FULL_NAME "push the recipe bundle"
+        # Registry PR only. Minted PUSH_TOKEN is kitchen-scoped; cross-repo
+        # registry publish uses REGISTRY_PUSH_TOKEN (PUSH_TOKEN fallback removed —
+        # multi-repo MINT_REPOS is rejected by the mint service with HTTP 401).
+        require_env REGISTRY_PUSH_TOKEN     "push the recipe bundle to npm-registry"
+        registry_token="${REGISTRY_PUSH_TOKEN}"
+        require_env REGISTRY_REPO_FULL_NAME      "open the recipe PR"
+        require_env REGISTRY_PUSH_REPO_FULL_NAME "push the recipe bundle"
         require_env ISSUE_NUMBER            "open the recipe PR"
         require_env TARGET_BRANCH           "open the recipe PR"
         if [[ -z "${identity}" || -z "${output_dir}" ]]; then
@@ -237,24 +219,42 @@ case "${status}" in
         fi
 
         branch="agent/${ISSUE_NUMBER}-npm-recipe-$(sanitize_ref "${identity}")"
+        pr_head="${branch}"
+        if [[ "${REGISTRY_PUSH_REPO_FULL_NAME}" != "${REGISTRY_REPO_FULL_NAME}" ]]; then
+            pr_head="${REGISTRY_PUSH_REPO_FULL_NAME%%/*}:${branch}"
+        fi
         echo "[post-validate] Opening recipe PR for ${identity} on branch ${branch}"
+        echo "[post-validate] Clone base=${REGISTRY_REPO_FULL_NAME}@${TARGET_BRANCH} push=${REGISTRY_PUSH_REPO_FULL_NAME} PR=${REGISTRY_REPO_FULL_NAME} head=${pr_head}"
 
+        render_root="${RENDER_ROOT%/}"
+        if [[ "${output_dir}" != "${render_root}"/* ]]; then
+            echo "[post-validate] rendered bundle ${output_dir} is outside ${render_root}; refusing to publish" >&2
+            exit 1
+        fi
+        bundle_rel="${output_dir#"${render_root}/"}"
+
+        publish_dir="$(mktemp -d)"
         (
-            cd -- "${RENDER_ROOT}"
+            trap 'rm -rf -- "${publish_dir}"' EXIT
+            set -euo pipefail
+            git -c protocol.version=2 clone --depth 1 --branch "${TARGET_BRANCH}" \
+                "https://github.com/${REGISTRY_REPO_FULL_NAME}.git" \
+                "${publish_dir}"
+            cd -- "${publish_dir}"
             ensure_git_identity
             git checkout -B "${branch}"
-            # Stage ONLY the rendered bundle so unrelated target-repo working-tree
-            # state never leaks into the registry PR diff. The kitchen-side audit
-            # artifact lives under REPO_ROOT (gitignored) and is not in this tree.
-            git add -- "${output_dir}"
+            bundle_dest="${publish_dir}/${bundle_rel}"
+            mkdir -p "$(dirname -- "${bundle_dest}")"
+            cp -a -- "${output_dir}/." "${bundle_dest}/"
+            git add -- "${bundle_rel}"
             git commit -m "npm-recipe: onboard ${identity}" -m "Assisted-by: Claude"
-            git remote set-url origin "https://x-access-token:${registry_token}@github.com/${REGISTRY_REPO_FULL_NAME}.git"
-            if ! git push -u origin -- "${branch}"; then
-                git push -u origin --force-with-lease -- "${branch}"
+            push_url="https://x-access-token:${registry_token}@github.com/${REGISTRY_PUSH_REPO_FULL_NAME}.git"
+            if ! git push "${push_url}" "HEAD:${branch}"; then
+                git push --force-with-lease "${push_url}" "HEAD:${branch}"
             fi
             GH_TOKEN="${registry_token}" gh pr create \
                 --repo "${REGISTRY_REPO_FULL_NAME}" \
-                --head "${branch}" \
+                --head "${pr_head}" \
                 --base "${TARGET_BRANCH}" \
                 --title "npm-recipe: onboard ${identity}" \
                 --body "Automated npm recipe onboarding for \`${identity}\` (fixes #${ISSUE_NUMBER}).
@@ -265,6 +265,7 @@ Rendered from trusted deterministic facts by the npm-recipe-draft gate."
         ;;
 
     needs_human)
+        # Kitchen-only path: minted PUSH_TOKEN only (no REGISTRY_PUSH_TOKEN).
         require_env KITCHEN_REPO_FULL_NAME "comment on the issue"
         require_env ISSUE_NUMBER           "comment on the issue"
         require_env PUSH_TOKEN             "comment on the issue"
