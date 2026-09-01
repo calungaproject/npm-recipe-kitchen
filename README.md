@@ -105,6 +105,6 @@ A `/fs-onboard <name@version>` comment is handled by the `npm-recipe-onboard-*` 
 
 `REGISTRY_PUSH_TOKEN` is required only for `drafted` registry PRs.
 Upstream `REGISTRY_REPO_FULL_NAME` is cloned anonymously when public (no PAT read).
-For demos without upstream write access, set Actions variable `REGISTRY_PUSH_REPO_FULL_NAME` to your fork (e.g. `dperaza4dustbit/npm-registry`); the `npm-recipe-registry-publish` job pushes to your fork and opens a cross-repo PR — no manual fork rebase required.
+For demos without upstream write access, set the **repository variable** `REGISTRY_PUSH_REPO_FULL_NAME` to your fork (e.g. `dperaza4dustbit/npm-registry` under Settings → Secrets and variables → Actions → Variables). The `npm-recipe-registry-publish` job reads that variable at publish time — it is not injected into the harness agent environment during the run.
 The publish job downloads the `fullsend-npm-recipe-draft` artifact uploaded by the fullsend composite action (v0.37.0) in the upstream `Dispatch` harness run.
 `kill_switch` in `.fullsend/config.yaml` disables all dispatch when set to `true`.

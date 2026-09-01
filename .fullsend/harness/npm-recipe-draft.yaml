@@ -65,9 +65,10 @@ env:
     runner:
         FULLSEND_OUTPUT_FILE: recipe-result.json
         REGISTRY_REPO_FULL_NAME: calungaproject/npm-registry
-        # Optional: set REGISTRY_PUSH_REPO_FULL_NAME (e.g. dperaza4dustbit/npm-registry)
-        # to push to a fork and open a cross-repo PR against REGISTRY_REPO_FULL_NAME.
-        REGISTRY_PUSH_REPO_FULL_NAME: ${REGISTRY_PUSH_REPO_FULL_NAME}
+        # Fork push target (dperaza4dustbit/npm-registry) is read from the repository
+        # variable REGISTRY_PUSH_REPO_FULL_NAME in npm-recipe-registry-publish job —
+        # not here. ${VAR} in harness env requires process env at load time; upstream
+        # harness-run does not inject GitHub Actions vars into the agent step.
         # harness-run cannot receive REGISTRY_PUSH_TOKEN; defer to npm-recipe-registry-publish job.
         DEFER_REGISTRY_PUBLISH: "true"
         KITCHEN_REPO_FULL_NAME: calungaproject/npm-recipe-kitchen
