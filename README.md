@@ -106,5 +106,12 @@ A `/fs-onboard <name@version>` comment is handled by the `npm-recipe-onboard-*` 
 `REGISTRY_PUSH_TOKEN` is required only for `drafted` registry PRs.
 Upstream `REGISTRY_REPO_FULL_NAME` is cloned anonymously when public (no PAT read).
 For demos without upstream write access, set the **repository variable** `REGISTRY_PUSH_REPO_FULL_NAME` to your fork (e.g. `dperaza4dustbit/npm-registry` under Settings → Secrets and variables → Actions → Variables). The `npm-recipe-registry-publish` job reads that variable at publish time — it is not injected into the harness agent environment during the run.
+
+Fork demo PAT scopes:
+
+- **Git push** to your fork: `REGISTRY_PUSH_TOKEN` with **Contents: Read and write** on the fork (fine-grained scoped to the fork is fine).
+- **Open upstream PR** on `calungaproject/npm-registry`: the same token must also be allowed to **create pull requests on the upstream repo**. A fine-grained PAT scoped only to your fork fails with `Resource not accessible by personal access token (createPullRequest)`. Use a **classic** PAT with `public_repo`, or a fine-grained PAT with **Pull requests: Read and write** on `calungaproject/npm-registry`. Optionally set a separate `REGISTRY_PR_TOKEN` secret for PR creation while keeping `REGISTRY_PUSH_TOKEN` fork-only for push.
+
+If PR creation still fails, the publish job posts a compare link on the kitchen issue after a successful fork push.
 The publish job downloads the `fullsend-npm-recipe-draft` artifact uploaded by the fullsend composite action (v0.37.0) in the upstream `Dispatch` harness run.
 `kill_switch` in `.fullsend/config.yaml` disables all dispatch when set to `true`.

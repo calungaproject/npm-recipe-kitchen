@@ -160,6 +160,7 @@ jobs:
     permissions:
       actions: read
       contents: read
+      issues: write
       pull-requests: write
     steps:
       - name: Checkout config repository
@@ -226,8 +227,11 @@ jobs:
       - name: Publish registry PR
         env:
           REGISTRY_PUSH_TOKEN: ${{ secrets.REGISTRY_PUSH_TOKEN }}
+          REGISTRY_PR_TOKEN: ${{ secrets.REGISTRY_PR_TOKEN }}
           REGISTRY_PUSH_REPO_FULL_NAME: ${{ vars.REGISTRY_PUSH_REPO_FULL_NAME }}
           EXPECTED_REGISTRY_REPO: calungaproject/npm-registry
+          KITCHEN_REPO_FULL_NAME: ${{ github.repository }}
+          KITCHEN_GITHUB_TOKEN: ${{ github.token }}
         run: bash .github/scripts/publish-registry-bundle.sh registry-publish-request.json registry-bundle
 
   dispatch:
