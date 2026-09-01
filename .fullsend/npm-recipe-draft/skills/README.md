@@ -20,8 +20,8 @@ Enabled via `@skills/...` includes in `.fullsend/npm-recipe-draft/CLAUDE.md`.
 
 Agent output:
 
-- Recipe files: `packages/<name>/<version>/` in the target repo working tree (`$REPO_DIR`)
-- Status: `recipe-result.json` schema version 2
+- Recipe files: `${RECIPE_PACKAGES_DIR:-/sandbox/workspace/target-repo/packages}/<name>/<version>/` (synced to runner `REPO_DIR` via SafeDownload)
+- Status: `recipe-result.json` schema version 2 under `$FULLSEND_OUTPUT_DIR/`
 
 Post-validate checks manifest schema + fact binding; no template renderer.
 
@@ -29,7 +29,7 @@ Post-validate checks manifest schema + fact binding; no template renderer.
 
 ```bash
 fullsend run ...   # or issue comment /fs-onboard lodash@4.18.1
-ls -la packages/<name>/<version>/
+ls -la target-repo/packages/<name>/<version>/   # in sandbox after run
 ```
 
 Audit artifacts: `recipes/audit/<name>/<version>/fact-bundle.json` (kitchen repo, gitignored).

@@ -89,11 +89,15 @@ export function runPostValidation({ resultPath, inputPath, repoRoot, renderRoot,
       facts,
     });
     if (!bundleCheck.valid) {
+      const missingDir = bundleCheck.errors?.some((e) => e.check === 'recipe-dir-missing');
+      const hint = missingDir
+        ? ` Recipe files must be written under ${process.env.RECIPE_PACKAGES_DIR || '/sandbox/workspace/target-repo/packages'}/<name>/<version>/ in the sandbox, not /sandbox/workspace/packages/.`
+        : '';
       return {
         ok: false,
         reason_code: 'RECIPE_BUNDLE_REJECTED',
         errors: bundleCheck.errors,
-        message: 'agent-authored recipe bundle failed validation',
+        message: `agent-authored recipe bundle failed validation${hint}`,
       };
     }
 
