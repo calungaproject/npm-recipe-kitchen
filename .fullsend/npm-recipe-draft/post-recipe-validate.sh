@@ -200,11 +200,9 @@ TARGET_BRANCH="${TARGET_BRANCH:-main}"
 
 case "${status}" in
     drafted)
-        # Registry PR only. Minted PUSH_TOKEN is kitchen-scoped; cross-repo
-        # registry publish uses REGISTRY_PUSH_TOKEN (PUSH_TOKEN fallback removed —
-        # multi-repo MINT_REPOS is rejected by the mint service with HTTP 401).
-        require_env REGISTRY_PUSH_TOKEN     "push the recipe bundle to npm-registry"
-        registry_token="${REGISTRY_PUSH_TOKEN}"
+        # Registry PR only. Minted PUSH_TOKEN is kitchen-scoped. Cross-repo publish
+        # uses REGISTRY_PUSH_TOKEN when present in the harness env; otherwise the
+        # post-script writes registry-publish-request.json for npm-recipe-registry-publish.yaml.
         require_env REGISTRY_REPO_FULL_NAME      "open the recipe PR"
         require_env REGISTRY_PUSH_REPO_FULL_NAME "push the recipe bundle"
         require_env ISSUE_NUMBER            "open the recipe PR"
@@ -232,6 +230,34 @@ case "${status}" in
             exit 1
         fi
         bundle_rel="${output_dir#"${render_root}/"}"
+
+        if [[ -z "${REGISTRY_PUSH_TOKEN:-}" ]]; then
+            if [[ "${DEFER_REGISTRY_PUBLISH:-}" != "true" ]]; then
+                echo "[post-validate] REGISTRY_PUSH_TOKEN is not set; refusing to publish to npm-registry" >&2
+                echo "[post-validate] Set REGISTRY_PUSH_TOKEN in the harness env, or enable DEFER_REGISTRY_PUBLISH for deferred publish" >&2
+                exit 1
+            fi
+            defer_dir="${GITHUB_WORKSPACE:-.}/output"
+            bundle_archive="${defer_dir}/registry-bundle"
+            mkdir -p "${bundle_archive}"
+            cp -a -- "${output_dir}/." "${bundle_archive}/"
+            jq -nc \
+                --arg identity "${identity}" \
+                --arg bundle_rel "${bundle_rel}" \
+                --arg bundle_archive "registry-bundle" \
+                --arg issue_number "${ISSUE_NUMBER}" \
+                --arg registry_repo "${REGISTRY_REPO_FULL_NAME}" \
+                --arg registry_push_repo "${REGISTRY_PUSH_REPO_FULL_NAME}" \
+                --arg target_branch "${TARGET_BRANCH}" \
+                --arg branch "${branch}" \
+                --arg pr_head "${pr_head}" \
+                '{identity:$identity,bundle_rel:$bundle_rel,bundle_archive:$bundle_archive,issue_number:$issue_number,registry_repo:$registry_repo,registry_push_repo:$registry_push_repo,target_branch:$target_branch,branch:$branch,pr_head:$pr_head}' \
+                > "${defer_dir}/registry-publish-request.json"
+            echo "[post-validate] REGISTRY_PUSH_TOKEN not in harness env; deferred registry publish to npm-recipe-registry-publish job"
+            exit 0
+        fi
+
+        registry_token="${REGISTRY_PUSH_TOKEN}"
 
         publish_dir="$(mktemp -d)"
         (

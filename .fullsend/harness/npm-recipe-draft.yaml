@@ -68,6 +68,8 @@ env:
         # Optional: set REGISTRY_PUSH_REPO_FULL_NAME (e.g. dperaza4dustbit/npm-registry)
         # to push to a fork and open a cross-repo PR against REGISTRY_REPO_FULL_NAME.
         REGISTRY_PUSH_REPO_FULL_NAME: ${REGISTRY_PUSH_REPO_FULL_NAME}
+        # harness-run cannot receive REGISTRY_PUSH_TOKEN; defer to npm-recipe-registry-publish job.
+        DEFER_REGISTRY_PUBLISH: "true"
         KITCHEN_REPO_FULL_NAME: calungaproject/npm-recipe-kitchen
     sandbox:
         RECIPE_INPUT_FILE: /sandbox/workspace/recipe-input.json
@@ -83,4 +85,4 @@ env:
 post_script: npm-recipe-draft/post-recipe-validate.sh
 
 # Dispatch trigger intentionally omitted: /fs-onboard is handled by the
-# npm-recipe-onboard job in .github/workflows/fullsend.yaml.
+# npm-recipe-onboard-* jobs in .github/workflows/fullsend.yaml.
