@@ -74,9 +74,8 @@ env:
         KITCHEN_REPO_FULL_NAME: calungaproject/npm-recipe-kitchen
     sandbox:
         RECIPE_INPUT_FILE: /sandbox/workspace/recipe-input.json
-        # Recipe files must live under target-repo/ so fullsend SafeDownload syncs them
-        # to REPO_DIR for post-recipe-validate.sh (not /sandbox/workspace/packages/).
-        # Default path: .fullsend/npm-recipe-draft/recipe-paths.sh
+        # Agent write path in sandbox (synced to runner as REPO_DIR / TARGET_REPO_DIR).
+        # Runner scripts resolve packages via runner_repo_root() in recipe-paths.sh.
         RECIPE_PACKAGES_DIR: /sandbox/workspace/target-repo/packages
         RECIPE_PACKAGES_BASE: packages
         FULLSEND_OUTPUT_DIR: /sandbox/workspace/output

@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Harness validation_loop (ADR 0022): ensure recipe-result.json landed in the
-# sandbox output directory before post-recipe-validate runs.
+# sandbox output directory and the target-repo bundle was extracted to the runner.
+# Runs on the runner (cwd = iteration-N/) after SafeDownload — not inside sandbox.
 set -euo pipefail
 
 _script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
@@ -61,7 +62,11 @@ if [[ "${status}" == "drafted" ]]; then
   fi
   recipe_version="${package##*@}"
   recipe_name="${package%@${recipe_version}}"
-  recipe_dir="${RECIPE_PACKAGES_DIR}/${recipe_name}/${recipe_version}"
+  if ! recipe_base="$(runner_recipe_packages_dir)"; then
+    echo "FAIL: cannot resolve runner recipe packages directory (REPO_DIR and TARGET_REPO_DIR must match when both are set)"
+    exit 1
+  fi
+  recipe_dir="${recipe_base}/${recipe_name}/${recipe_version}"
   missing=()
   for name in manifest.json build.entrypoint.sh verify.smoke.sh; do
     if [[ ! -f "${recipe_dir}/${name}" ]]; then
@@ -73,7 +78,7 @@ if [[ "${status}" == "drafted" ]]; then
     for path in "${missing[@]}"; do
       echo "  missing: ${path}"
     done
-    echo "Write under \${RECIPE_PACKAGES_DIR}/<name>/<version>/ (target-repo mount), not /sandbox/workspace/packages/."
+    echo "Write under ${SANDBOX_RECIPE_PACKAGES_DIR}/<name>/<version>/ in the sandbox (target-repo mount), not /sandbox/workspace/packages/."
     exit 1
   fi
   echo "PASS: recipe bundle present under ${recipe_dir}"
