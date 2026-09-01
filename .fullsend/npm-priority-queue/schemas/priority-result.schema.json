@@ -1,0 +1,74 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "priority-result.schema.json",
+  "title": "PriorityQueueResult",
+  "description": "Agent 1 output: ranked onboarding queue plus issue dispatch metadata.",
+  "type": "object",
+  "definitions": {
+    "name_at_version": {
+      "type": "string",
+      "pattern": "^(@[a-z0-9][a-z0-9._-]*/)?[a-z0-9][a-z0-9._-]*@\\d+\\.\\d+\\.\\d+([-+][-a-zA-Z0-9.+]+)?$"
+    },
+    "queue_entry": {
+      "type": "object",
+      "properties": {
+        "candidate": { "$ref": "#/definitions/name_at_version" },
+        "immediate_l3_unlocks": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/name_at_version" },
+          "uniqueItems": true
+        },
+        "gap_reductions": {
+          "type": "object",
+          "patternProperties": {
+            "^(@[a-z0-9][a-z0-9._-]*/)?[a-z0-9][a-z0-9._-]*@\\d+\\.\\d+\\.\\d+([-+][-a-zA-Z0-9.+]+)?$": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          "additionalProperties": false
+        },
+        "affected_packages": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/name_at_version" },
+          "uniqueItems": true
+        },
+        "native_tier": { "type": "string", "minLength": 1 },
+        "demand": { "type": "integer", "minimum": 0 },
+        "combined_score": { "type": "number", "minimum": 0, "maximum": 1 },
+        "rationale": { "type": "string", "minLength": 1 }
+      },
+      "required": [
+        "candidate",
+        "immediate_l3_unlocks",
+        "gap_reductions",
+        "affected_packages",
+        "native_tier",
+        "demand",
+        "rationale"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "properties": {
+    "schema_version": { "const": 1 },
+    "top_n": { "type": "integer", "minimum": 1, "maximum": 50 },
+    "weights": {
+      "type": "object",
+      "properties": {
+        "closure": { "type": "number", "minimum": 0, "maximum": 1 },
+        "popularity": { "type": "number", "minimum": 0, "maximum": 1 }
+      },
+      "required": ["closure", "popularity"],
+      "additionalProperties": false
+    },
+    "reasoning": { "type": "string", "minLength": 1 },
+    "entries": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/definitions/queue_entry" }
+    }
+  },
+  "required": ["schema_version", "top_n", "weights", "reasoning", "entries"],
+  "additionalProperties": false
+}

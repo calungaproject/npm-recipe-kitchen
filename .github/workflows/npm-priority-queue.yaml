@@ -1,0 +1,140 @@
+# Agent 1: npm-priority-queue — ranks TL onboarding candidates and opens issues for Agent 2.
+#
+# Manual demo: Actions → npm-priority-queue → Run workflow (top_n default 5).
+# Scheduled: weekly Monday 14:00 UTC (disable in fork if undesired).
+name: npm-priority-queue
+
+on:
+  workflow_dispatch:
+    inputs:
+      top_n:
+        description: Number of packages to queue for onboarding
+        required: false
+        default: "5"
+        type: string
+      dry_run:
+        description: Validate agent output but do not create GitHub issues
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
+  schedule:
+    - cron: "0 14 * * 1"
+
+permissions: {}
+
+jobs:
+  priority-queue-prepare:
+    if: >-
+      github.event_name == 'workflow_dispatch'
+      || github.event_name == 'schedule'
+    runs-on: ubuntu-24.04
+    concurrency:
+      group: fullsend-harness-npm-priority-queue-${{ github.repository }}
+      cancel-in-progress: true
+    permissions:
+      contents: read
+      issues: write
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+    steps:
+      - name: Authorize priority queue run
+        id: authorize
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ACTOR: ${{ github.actor }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          if [[ "${{ github.event_name }}" == "schedule" ]]; then
+            echo "authorized=true" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+          api_err="$(mktemp)"
+          trap 'rm -f -- "${api_err}"' EXIT
+          if ! role="$(gh api "repos/${REPO}/collaborators/${ACTOR}/permission" \
+              --jq '.role_name' 2>"${api_err}")"; then
+            echo "::error::Permission API call failed for ${ACTOR}: $(cat "${api_err}")"
+            exit 1
+          fi
+          case "${role}" in
+            admin|maintain|write) echo "authorized=true" >> "${GITHUB_OUTPUT}" ;;
+            *)
+              echo "::notice::User ${ACTOR} is not authorized to run npm-priority-queue"
+              echo "authorized=false" >> "${GITHUB_OUTPUT}"
+              ;;
+          esac
+
+      - name: Build harness matrix
+        id: matrix
+        if: steps.authorize.outputs.authorized == 'true'
+        env:
+          TOP_N: ${{ github.event.inputs.top_n || '5' }}
+          DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          run_id="${GITHUB_RUN_ID}"
+          run_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${run_id}"
+          if [[ "${DRY_RUN}" == "true" ]]; then
+            EVENT_PAYLOAD="$(jq -nc \
+              --arg top_n "${TOP_N}" \
+              --arg dry_run "${DRY_RUN}" \
+              --arg run_url "${run_url}" \
+              '{inputs:{top_n:$top_n, dry_run:$dry_run}, issue:{html_url:$run_url, number:0}}')"
+            status_number="0"
+          else
+            gh label create "npm-priority-queue-run" --repo "${REPO}" \
+              --description "Tracker issue for an npm-priority-queue workflow run" \
+              --color "5319E7" --force 2>/dev/null || true
+            tracker_url="$(gh issue create \
+              --repo "${REPO}" \
+              --title "[npm-priority-queue] run ${run_id}" \
+              --body "Automated priority queue run. [Workflow run](${run_url})." \
+              --label "npm-priority-queue-run")"
+            tracker_number="${tracker_url##*/}"
+            EVENT_PAYLOAD="$(jq -nc \
+              --arg top_n "${TOP_N}" \
+              --arg dry_run "${DRY_RUN}" \
+              --arg issue_url "${tracker_url}" \
+              --argjson issue_number "${tracker_number}" \
+              '{inputs:{top_n:$top_n, dry_run:$dry_run}, issue:{html_url:$issue_url, number:$issue_number}}')"
+            status_number="${tracker_number}"
+          fi
+          MATRIX="$(jq -nc \
+            --arg agent "npm-priority-queue" \
+            --arg role "coder" \
+            --arg source_repo "${GITHUB_REPOSITORY}" \
+            --arg event_type "${{ github.event_name }}" \
+            --arg event_payload "${EVENT_PAYLOAD}" \
+            --arg status_repo "${GITHUB_REPOSITORY}" \
+            --arg status_number "${status_number}" \
+            '{include:[{agent:$agent,role:$role,source_repo:$source_repo,event_type:$event_type,event_payload:$event_payload,status_repo:$status_repo,status_number:$status_number}]}')"
+          echo "matrix=${MATRIX}" >> "${GITHUB_OUTPUT}"
+
+  priority-queue-run:
+    needs: priority-queue-prepare
+    if: needs.priority-queue-prepare.outputs.matrix != ''
+    permissions:
+      actions: write
+      id-token: write
+      contents: write
+      issues: write
+      packages: read
+      pull-requests: write
+    uses: fullsend-ai/fullsend/.github/workflows/reusable-dispatch.yml@84c8bbbb821ff85136854150b06740253709b3b8 # v0.37.0
+    with:
+      matrix: ${{ needs.priority-queue-prepare.outputs.matrix }}
+      event_action: ${{ github.event_name }}
+      install_mode: per-repo
+      mint_url: ${{ vars.FULLSEND_MINT_URL }}
+      gcp_region: ${{ vars.FULLSEND_GCP_REGION }}
+      runner_image: ubuntu-24.04
+    secrets:
+      FULLSEND_GCP_WIF_PROVIDER: ${{ secrets.FULLSEND_GCP_WIF_PROVIDER }}
+      FULLSEND_GCP_PROJECT_ID: ${{ secrets.FULLSEND_GCP_PROJECT_ID }}
+      OTEL_EXPORTER_OTLP_TRACES_HEADERS: ${{ secrets.OTEL_EXPORTER_OTLP_TRACES_HEADERS }}
+      OTEL_EXPORTER_OTLP_HEADERS: ${{ secrets.OTEL_EXPORTER_OTLP_HEADERS }}

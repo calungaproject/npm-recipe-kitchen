@@ -6,11 +6,10 @@ PoC for safe npm package on-boarding through auditable recipe bundles.
 
 This repository is the **recipe kitchen**: it investigates a supplied npm package candidate and drafts a deterministic, reviewable recipe bundle.
 
-**In:** an ordered, static list of candidates supplied to this repository.
+**In:** Agent 1 (`npm-priority-queue`) ranks candidates from TL closure index + npm popularity, or an explicit `/fs-onboard` comment for a single package.
 Each candidate is an exact package name and exact version (for example `semver@7.7.2`).
-This repository consumes that order; it does not discover, score, or re-prioritize candidates.
 
-**Out:** exactly one of two bounded results per candidate.
+**Out:** exactly one of two bounded results per candidate (Agent 2).
 
 - `drafted` — validated recipe under `packages/<name>/<version>/` on **npm-registry** (PR opened there).
 - `needs_human` — bounded refusal with reason; best-effort draft staged under `recipes/drafts/<name>/<version>/` on **this kitchen repo** for review-only PR. No npm-registry PR.
@@ -67,8 +66,8 @@ Fullsend (the sandboxed model) is restricted to **judgment**: given the trusted 
 
 ## Boundary: what this repository does NOT do
 
-- It does **not** write to any registry, open a registry PR, promote, sign, build, or publish.
-- It does **not** compute queue scores, popularity, or candidate priority.
+- It does **not** write to any registry, open a registry PR, promote, sign, build, or publish (Agent 2 defers registry PR to a follow-up job).
+- Agent 1 scores and queues candidates; Agent 2 does not re-score the global queue.
 - If provenance metadata such as `bundle.json` is ever retained, it is a kitchen-side artifact only and must never be included in a target registry PR.
 
 ## Templates and scripts are policy, not a model
@@ -95,7 +94,24 @@ The internal modules are separated by responsibility (facts, validator, renderer
 
 ## Fullsend
 
-Fullsend drives the drafting run: the `npm-recipe-draft` harness in `.fullsend/` and the managed workflow in `.github/workflows/fullsend.yaml`.
+Fullsend drives two agents in sequence:
+
+| Agent | Name | Trigger | Output |
+|-------|------|---------|--------|
+| **1** | `npm-priority-queue` | [`npm-priority-queue` workflow](.github/workflows/npm-priority-queue.yaml) (cron + manual) | Issues + `/fs-onboard` comments |
+| **2** | `npm-recipe-draft` | `/fs-onboard <name@version>` issue comment | Recipe bundle PR |
+
+### Agent 1: priority queue
+
+Workflow **Actions → npm-priority-queue → Run workflow**:
+
+- `top_n` (default `5`) — how many packages to queue
+- `dry_run` — score and validate without creating GitHub issues (no tracker or onboard issues)
+
+The pre-script pulls `npm-closure-index` from Quay, lists packages on the [TL npm registry](https://packages.redhat.com/api/pulp-content/public-trusted-libraries/javascript/), scores **60% closure / 40% popularity**, and passes a shortlist to the model. The post-script opens one issue per selected candidate (labels `npm-priority-candidate`, `npm-onboard`) and posts `/fs-onboard name@version` so Agent 2 runs automatically.
+
+### Agent 2: recipe draft
+
 A `/fs-onboard <name@version>` comment is handled by the `npm-recipe-onboard-*` jobs in `.github/workflows/fullsend.yaml`, which call upstream `reusable-dispatch` so token minting uses the enrolled fullsend workflow identity.
 
 | Outcome | PR target | Token |

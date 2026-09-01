@@ -1,0 +1,39 @@
+# Fullsend agent harness: npm-priority-queue (Agent 1).
+agent: npm-priority-queue/CLAUDE.md
+role: coder
+
+providers:
+    - vertex-ai
+
+host_files:
+    - src: env/gcp-vertex.env
+      dest: /sandbox/workspace/.env.d/gcp-vertex.env
+      expand: true
+    - src: ${GOOGLE_APPLICATION_CREDENTIALS}
+      dest: /tmp/.gcp-credentials.json
+    - src: ${GCP_OIDC_TOKEN_FILE}
+      dest: /sandbox/workspace/.gcp-oidc-token
+      optional: true
+    - src: /tmp/fullsend-npm-priority-queue/priority-input.json
+      dest: /sandbox/workspace/priority-input.json
+      optional: true
+
+pre_script: npm-priority-queue/pre-collect-candidates.sh
+
+validation_loop:
+    script: npm-priority-queue/validate-priority-result.sh
+    schema: npm-priority-queue/schemas/priority-result.schema.json
+    max_iterations: 2
+
+env:
+    runner:
+        FULLSEND_OUTPUT_FILE: priority-result.json
+        KITCHEN_REPO_FULL_NAME: calungaproject/npm-recipe-kitchen
+        PRIORITY_WEIGHT_CLOSURE: "0.6"
+        PRIORITY_WEIGHT_POPULARITY: "0.4"
+    sandbox:
+        PRIORITY_INPUT_FILE: /sandbox/workspace/priority-input.json
+        FULLSEND_OUTPUT_DIR: /sandbox/workspace/output
+        FULLSEND_OUTPUT_FILE: priority-result.json
+
+post_script: npm-priority-queue/post-create-onboard-issues.sh

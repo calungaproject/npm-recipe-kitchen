@@ -40,11 +40,17 @@ jobs:
     if: >-
       github.event_name == 'issue_comment'
       && github.event.issue != null
-      && github.event.comment.user.type != 'Bot'
       && (
         github.event.comment.body == '/fs-onboard'
         || startsWith(github.event.comment.body, '/fs-onboard ')
         || startsWith(github.event.comment.body, format('{0}\n', '/fs-onboard'))
+      )
+      && (
+        github.event.comment.user.type != 'Bot'
+        || (
+          github.event.comment.user.login == 'github-actions[bot]'
+          && contains(join(github.event.issue.labels.*.name, ','), 'npm-priority-candidate')
+        )
       )
     runs-on: ubuntu-24.04
     concurrency:
@@ -95,10 +101,18 @@ jobs:
           case "${role}" in
             admin|maintain|write) authorized=true ;;
           esac
+          if [[ "${authorized}" != "true" && "${COMMENT_USER_LOGIN}" == "github-actions[bot]" ]]; then
+            label_json="$(gh api "repos/${REPO}/issues/${ISSUE_NUMBER}" --jq '.labels[].name' 2>/dev/null || true)"
+            if [[ "${label_json}" == *"npm-priority-candidate"* ]]; then
+              authorized=true
+            fi
+          fi
           if [[ "${authorized}" != "true" ]]; then
             echo "::notice::User ${COMMENT_USER_LOGIN} is not authorized to run /fs-onboard (requires write access)"
-            gh issue comment "${ISSUE_NUMBER}" --repo "${REPO}" \
-              --body "Cannot run \`/fs-onboard\`: @${COMMENT_USER_LOGIN} does not have write access to \`${REPO}\`."
+            if [[ "${COMMENT_USER_LOGIN}" != "github-actions[bot]" ]]; then
+              gh issue comment "${ISSUE_NUMBER}" --repo "${REPO}" \
+                --body "Cannot run \`/fs-onboard\`: @${COMMENT_USER_LOGIN} does not have write access to \`${REPO}\`."
+            fi
             echo "authorized=false" >> "${GITHUB_OUTPUT}"
             exit 0
           fi
