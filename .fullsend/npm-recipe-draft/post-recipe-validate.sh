@@ -251,7 +251,8 @@ case "${status}" in
                 --arg target_branch "${TARGET_BRANCH}" \
                 --arg branch "${branch}" \
                 --arg pr_head "${pr_head}" \
-                '{identity:$identity,bundle_rel:$bundle_rel,bundle_archive:$bundle_archive,issue_number:$issue_number,registry_repo:$registry_repo,registry_push_repo:$registry_push_repo,target_branch:$target_branch,branch:$branch,pr_head:$pr_head}' \
+                --arg harness_run_id "${GITHUB_RUN_ID:-}" \
+                '{identity:$identity,bundle_rel:$bundle_rel,bundle_archive:$bundle_archive,issue_number:$issue_number,registry_repo:$registry_repo,registry_push_repo:$registry_push_repo,target_branch:$target_branch,branch:$branch,pr_head:$pr_head,harness_run_id:$harness_run_id}' \
                 > "${defer_dir}/registry-publish-request.json"
             echo "[post-validate] REGISTRY_PUSH_TOKEN not in harness env; deferred registry publish to npm-recipe-registry-publish job"
             exit 0

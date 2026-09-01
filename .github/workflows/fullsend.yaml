@@ -150,7 +150,9 @@ jobs:
   # Registry PR for drafted outcomes. harness-run (upstream reusable-dispatch) cannot
   # receive REGISTRY_PUSH_TOKEN, so post-recipe-validate.sh defers when
   # DEFER_REGISTRY_PUBLISH=true. Artifacts are uploaded by the fullsend composite
-  # action as fullsend-npm-recipe-draft from the child Dispatch workflow run.
+  # action as fullsend-npm-recipe-draft from the harness workflow run. The publish
+  # job lists candidates created after this workflow run started, then selects the
+  # artifact whose registry-publish-request.json matches this issue (and harness_run_id).
   npm-recipe-registry-publish:
     needs: [npm-recipe-onboard-prepare, npm-recipe-onboard-run]
     if: needs.npm-recipe-onboard-prepare.outputs.authorized == 'true'
@@ -165,26 +167,61 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Resolve Dispatch workflow run
+      - name: Download fullsend artifact for this issue
         id: harness
         env:
           GH_TOKEN: ${{ github.token }}
+          PARENT_RUN_ID: ${{ github.run_id }}
+          EVENT_ISSUE_NUMBER: ${{ github.event.issue.number }}
         run: |
           set -euo pipefail
-          harness_run_id="$(gh run list --limit 30 --json databaseId,name,conclusion,createdAt \
-            --jq '[.[] | select(.name == "Dispatch" and .conclusion == "success")] | sort_by(.createdAt) | last | .databaseId // empty')"
+          if [[ -z "${EVENT_ISSUE_NUMBER}" ]]; then
+            echo "::error::npm-recipe-registry-publish requires an issue_comment trigger with issue.number"
+            exit 1
+          fi
+          parent_started="$(gh api \
+            "repos/${GITHUB_REPOSITORY}/actions/runs/${PARENT_RUN_ID}" \
+            --jq '.run_started_at')"
+          mapfile -t candidate_run_ids < <(gh api \
+            "repos/${GITHUB_REPOSITORY}/actions/artifacts?per_page=100&name=fullsend-npm-recipe-draft" \
+            | jq -r --arg since "${parent_started}" '
+              [.artifacts[]
+               | select(.expired == false)
+               | select(.created_at >= $since)
+              ] | sort_by(.created_at) | reverse | .[].workflow_run.id
+            ')
+          probe_dir="$(mktemp -d)"
+          trap 'rm -rf "${probe_dir}"' EXIT
+          harness_run_id=""
+          for run_id in "${candidate_run_ids[@]}"; do
+            rm -rf "${probe_dir:?}"/*
+            if ! gh run download "${run_id}" \
+              --repo "${GITHUB_REPOSITORY}" \
+              --name fullsend-npm-recipe-draft \
+              --dir "${probe_dir}" 2>/dev/null; then
+              continue
+            fi
+            request_file="${probe_dir}/registry-publish-request.json"
+            if [[ ! -f "${request_file}" ]]; then
+              continue
+            fi
+            req_issue="$(jq -r '.issue_number // empty' "${request_file}")"
+            req_harness="$(jq -r '.harness_run_id // empty' "${request_file}")"
+            if [[ "${req_issue}" != "${EVENT_ISSUE_NUMBER}" ]]; then
+              continue
+            fi
+            if [[ -n "${req_harness}" && "${req_harness}" != "${run_id}" ]]; then
+              continue
+            fi
+            harness_run_id="${run_id}"
+            cp -a "${probe_dir}/." .
+            break
+          done
           if [[ -z "${harness_run_id}" ]]; then
-            echo "::error::Could not find a successful Dispatch workflow run to download the fullsend artifact from"
+            echo "::error::Could not find fullsend-npm-recipe-draft artifact for issue #${EVENT_ISSUE_NUMBER} from workflow run ${PARENT_RUN_ID}"
             exit 1
           fi
           echo "run_id=${harness_run_id}" >> "${GITHUB_OUTPUT}"
-
-      - name: Download fullsend artifact
-        uses: actions/download-artifact@v4
-        with:
-          github-token: ${{ github.token }}
-          run-id: ${{ steps.harness.outputs.run_id }}
-          name: fullsend-npm-recipe-draft
 
       - name: Publish registry PR
         env:
