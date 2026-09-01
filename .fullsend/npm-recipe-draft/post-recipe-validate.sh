@@ -178,6 +178,24 @@ ensure_git_identity() {
     fi
 }
 
+ensure_recipe_scripts_executable() {
+    # Actions artifact upload/download does not preserve mode bits; npm-registry
+    # lint-manifest.sh requires entrypoint and smoke scripts to be executable.
+    local recipe_dir="$1"
+    local manifest="${recipe_dir}/manifest.json"
+    local entrypoint smoke
+
+    [[ -f "${manifest}" ]] || return 0
+    entrypoint="$(jq -r '.entrypoint // empty' "${manifest}")"
+    smoke="$(jq -r '.smoke // empty' "${manifest}")"
+    if [[ -n "${entrypoint}" && -f "${recipe_dir}/${entrypoint}" ]]; then
+        chmod +x "${recipe_dir}/${entrypoint}"
+    fi
+    if [[ -n "${smoke}" && -f "${recipe_dir}/${smoke}" ]]; then
+        chmod +x "${recipe_dir}/${smoke}"
+    fi
+}
+
 status="$(json_field status)"
 identity="$(json_field identity)"
 output_dir="$(json_field output_dir)"
@@ -241,6 +259,7 @@ case "${status}" in
             bundle_archive="${defer_dir}/registry-bundle"
             mkdir -p "${bundle_archive}"
             cp -a -- "${output_dir}/." "${bundle_archive}/"
+            ensure_recipe_scripts_executable "${bundle_archive}"
             jq -nc \
                 --arg identity "${identity}" \
                 --arg bundle_rel "${bundle_rel}" \
@@ -273,6 +292,7 @@ case "${status}" in
             bundle_dest="${publish_dir}/${bundle_rel}"
             mkdir -p "$(dirname -- "${bundle_dest}")"
             cp -a -- "${output_dir}/." "${bundle_dest}/"
+            ensure_recipe_scripts_executable "${bundle_dest}"
             git add -- "${bundle_rel}"
             git commit -m "npm-recipe: onboard ${identity}" -m "Assisted-by: Claude"
             push_url="https://x-access-token:${registry_token}@github.com/${REGISTRY_PUSH_REPO_FULL_NAME}.git"
