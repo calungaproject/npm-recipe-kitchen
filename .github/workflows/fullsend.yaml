@@ -32,9 +32,11 @@ on:
 permissions: {}
 
 jobs:
-  # /fs-onboard is handled here (not reusable-dispatch harness-run) so we can
-  # set MINT_REPOS before fullsend run mints PUSH_TOKEN for both kitchen and
-  # npm-registry. Mutually exclusive with dispatch below.
+  # npm-recipe-onboard (/fs-onboard): runs fullsend run without MINT_REPOS so the
+  # mint service issues a kitchen-scoped PUSH_TOKEN (REPO_FULL_NAME default).
+  # Registry drafted PRs use REGISTRY_PUSH_TOKEN (fork or upstream write).
+  # needs_human kitchen draft PRs use PUSH_TOKEN only. Link the tracking issue in
+  # the PR body when changing this job (.github/ protected path).
   npm-recipe-onboard:
     if: >-
       github.event_name == 'issue_comment'
@@ -182,7 +184,11 @@ jobs:
           GITHUB_ISSUE_URL: ${{ github.event.issue.html_url }}
           ISSUE_NUMBER: ${{ github.event.issue.number }}
           REPO_FULL_NAME: ${{ github.repository }}
-          MINT_REPOS: npm-recipe-kitchen,npm-registry
+          # Cross-repo registry publish only (drafted). Not used for kitchen PRs.
+          REGISTRY_PUSH_TOKEN: ${{ secrets.REGISTRY_PUSH_TOKEN }}
+          # Fork flow (demo-friendly): push to your fork, PR to upstream. Override
+          # REGISTRY_PUSH_REPO_FULL_NAME via repo/org Actions variable if needed.
+          REGISTRY_PUSH_REPO_FULL_NAME: ${{ vars.REGISTRY_PUSH_REPO_FULL_NAME }}
           OTEL_EXPORTER_OTLP_ENDPOINT: ${{ vars.OTEL_EXPORTER_OTLP_ENDPOINT }}
           OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: ${{ vars.OTEL_EXPORTER_OTLP_TRACES_ENDPOINT }}
           OTEL_EXPORTER_OTLP_TRACES_HEADERS: ${{ secrets.OTEL_EXPORTER_OTLP_TRACES_HEADERS }}

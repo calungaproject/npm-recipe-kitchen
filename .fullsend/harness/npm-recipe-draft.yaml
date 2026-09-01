@@ -65,6 +65,9 @@ env:
     runner:
         FULLSEND_OUTPUT_FILE: recipe-result.json
         REGISTRY_REPO_FULL_NAME: calungaproject/npm-registry
+        # Optional: set REGISTRY_PUSH_REPO_FULL_NAME (e.g. dperaza4dustbit/npm-registry)
+        # to push to a fork and open a cross-repo PR against REGISTRY_REPO_FULL_NAME.
+        REGISTRY_PUSH_REPO_FULL_NAME: ${REGISTRY_PUSH_REPO_FULL_NAME}
         KITCHEN_REPO_FULL_NAME: calungaproject/npm-recipe-kitchen
     sandbox:
         RECIPE_INPUT_FILE: /sandbox/workspace/recipe-input.json
@@ -80,4 +83,4 @@ env:
 post_script: npm-recipe-draft/post-recipe-validate.sh
 
 # Dispatch trigger intentionally omitted: /fs-onboard is handled by the
-# npm-recipe-onboard job in .github/workflows/fullsend.yaml (sets MINT_REPOS).
+# npm-recipe-onboard job in .github/workflows/fullsend.yaml.
