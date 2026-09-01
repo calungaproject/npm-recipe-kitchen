@@ -4,7 +4,7 @@ Given a package identity ($ARGUMENTS or prompt for one), draft a full npm-regist
 
 1. Read skills under `.fullsend/npm-recipe-draft/skills/npm-registry-recipe/`.
 2. Run the fact collector pre-step (or read `recipe-input.json` if present).
-3. Write recipe files under `packages/<name>/<version>/`:
+3. Write recipe files under `${RECIPE_PACKAGES_DIR:-/sandbox/workspace/target-repo/packages}/<name>/<version>/`:
    - `manifest.json`
    - `build.entrypoint.sh`
    - `verify.smoke.sh`

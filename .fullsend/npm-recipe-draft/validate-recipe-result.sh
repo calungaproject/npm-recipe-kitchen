@@ -3,6 +3,10 @@
 # sandbox output directory before post-recipe-validate runs.
 set -euo pipefail
 
+_script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=recipe-paths.sh
+source "${_script_dir}/recipe-paths.sh"
+
 : "${FULLSEND_OUTPUT_SCHEMA:?FULLSEND_OUTPUT_SCHEMA must be set}"
 
 OUTPUT_DIR="output"
@@ -47,3 +51,30 @@ except ValidationError as e:
         print(f'  at: {\".\".join(str(p) for p in e.path)}')
     sys.exit(1)
 " "${RESULT_FILE}" "${FULLSEND_OUTPUT_SCHEMA}"
+
+status="$(jq -r '.status // empty' "${RESULT_FILE}")"
+if [[ "${status}" == "drafted" ]]; then
+  package="$(jq -r '.package // empty' "${RESULT_FILE}")"
+  if [[ -z "${package}" || "${package}" == "null" ]]; then
+    echo "FAIL: drafted result is missing package identity"
+    exit 1
+  fi
+  recipe_version="${package##*@}"
+  recipe_name="${package%@${recipe_version}}"
+  recipe_dir="${RECIPE_PACKAGES_DIR}/${recipe_name}/${recipe_version}"
+  missing=()
+  for name in manifest.json build.entrypoint.sh verify.smoke.sh; do
+    if [[ ! -f "${recipe_dir}/${name}" ]]; then
+      missing+=("${recipe_dir}/${name}")
+    fi
+  done
+  if [[ ${#missing[@]} -gt 0 ]]; then
+    echo "FAIL: drafted result requires recipe files under ${recipe_dir}/"
+    for path in "${missing[@]}"; do
+      echo "  missing: ${path}"
+    done
+    echo "Write under \${RECIPE_PACKAGES_DIR}/<name>/<version>/ (target-repo mount), not /sandbox/workspace/packages/."
+    exit 1
+  fi
+  echo "PASS: recipe bundle present under ${recipe_dir}"
+fi

@@ -21,7 +21,7 @@ Write the result file only to `$FULLSEND_OUTPUT_DIR/$FULLSEND_OUTPUT_FILE` (defa
 
 ### drafted
 
-Also write recipe files under `${RECIPE_PACKAGES_BASE}/<name>/<version>/` and include:
+Also write recipe files under `${RECIPE_PACKAGES_DIR:-/sandbox/workspace/target-repo/packages}/<name>/<version>/` and include:
 
 - `native_tier` (must match manifest)
 - `evidence` (≥ 1 item)
@@ -32,7 +32,7 @@ Must NOT include: `reason`, `escalation_target`.
 
 ### needs_human
 
-Include `reason` and `escalation_target`. When you inspected upstream, also write a **best-effort partial** recipe under `packages/<name>/<version>/` for human review. Post-validation opens a review-only PR on this kitchen repo (`recipes/drafts/`), not on npm-registry.
+Include `reason` and `escalation_target`. When you inspected upstream, also write a **best-effort partial** recipe under `${RECIPE_PACKAGES_DIR:-/sandbox/workspace/target-repo/packages}/<name>/<version>/` for human review. Post-validation opens a review-only PR on this kitchen repo (`recipes/drafts/`), not on npm-registry.
 
 ## Input
 

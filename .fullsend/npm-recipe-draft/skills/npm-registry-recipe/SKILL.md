@@ -14,15 +14,17 @@ Draft a **complete recipe** for one `name@version` in the Calunga npm Trusted Li
 
 ## Deliverable
 
-Write exactly these files under `packages/<name>/<version>/`:
+Write exactly these files under `${RECIPE_PACKAGES_DIR:-/sandbox/workspace/target-repo/packages}/<name>/<version>/`:
 
 ```text
-packages/<name>/<version>/
+target-repo/packages/<name>/<version>/
   manifest.json           # required
   build.entrypoint.sh     # required, executable
   verify.smoke.sh         # required, executable
   tl-install.js           # optional — Tier B/C when upstream has no small shim to adapt
 ```
+
+Do **not** write under `/sandbox/workspace/packages/` (outside the target-repo mount).
 
 Do **not** create `out/` (factory output, gitignored). Do **not** author `compliance_level`, `missing_gaps`, or `pending_l3_gaps` — CI computes those on push.
 

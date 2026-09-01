@@ -57,13 +57,15 @@ Rules:
 
 ### 1. Recipe files
 
-Write the recipe under:
+Write the recipe under the **target-repo mount** (fullsend syncs this tree to the runner as `REPO_DIR`):
 
 ```text
-${RECIPE_PACKAGES_BASE}/<name>/<version>/
+${RECIPE_PACKAGES_DIR:-/sandbox/workspace/target-repo/packages}/<name>/<version>/
 ```
 
-Default `RECIPE_PACKAGES_BASE` is `packages` (npm-registry layout).
+Do **not** write under `/sandbox/workspace/packages/` — those files are never synced and post-validation will fail.
+
+Default `RECIPE_PACKAGES_DIR` is `/sandbox/workspace/target-repo/packages` (`RECIPE_PACKAGES_BASE` is the `packages` segment only).
 
 Required files for a **complete** draft:
 
@@ -89,6 +91,11 @@ Before finishing, verify:
 
 ```bash
 test -f "$FULLSEND_OUTPUT_DIR/$FULLSEND_OUTPUT_FILE" && jq -e . "$FULLSEND_OUTPUT_DIR/$FULLSEND_OUTPUT_FILE" >/dev/null
+recipe_pkg="$(jq -r .package "$FULLSEND_OUTPUT_DIR/$FULLSEND_OUTPUT_FILE")"
+recipe_name="${recipe_pkg%@*}"
+recipe_version="${recipe_pkg##*@}"
+recipe_dir="${RECIPE_PACKAGES_DIR:-/sandbox/workspace/target-repo/packages}/${recipe_name}/${recipe_version}"
+test -f "${recipe_dir}/manifest.json" && test -f "${recipe_dir}/build.entrypoint.sh" && test -f "${recipe_dir}/verify.smoke.sh"
 ```
 
 No markdown fences. Schema version **2**.
