@@ -18,6 +18,8 @@ roles:
 agents:
     - name: npm-recipe-draft
       source: harness/npm-recipe-draft.yaml
+    - name: npm-priority-queue
+      source: harness/npm-priority-queue.yaml
 allowed_remote_resources:
     - https://raw.githubusercontent.com/fullsend-ai/fullsend/
     - https://raw.githubusercontent.com/fullsend-ai/agents/
