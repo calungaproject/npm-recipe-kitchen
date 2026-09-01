@@ -17,6 +17,20 @@ describe('parseIdentityKey', () => {
 });
 
 describe('computePriorityQueue', () => {
+  it('parses TL catalog HTML with ./package/ hrefs', async () => {
+    const html = `<a href="../">../</a>
+<a href="./semver/">semver/</a>
+<a href="./lodash/">lodash/</a>
+<a href="./@calunga/">@calunga/</a>`;
+    const adapters = createDefaultPriorityAdapters({
+      fetch: async () => ({ ok: true, text: async () => html }),
+    });
+    const names = await adapters.fetchTlCatalogNames();
+    assert.ok(names.has('semver'));
+    assert.ok(names.has('lodash'));
+    assert.equal(names.has('@calunga'), false);
+  });
+
   it('ranks closure blockers above pure popularity seeds', async () => {
     const adapters = createDefaultPriorityAdapters({
       closureIndex: {

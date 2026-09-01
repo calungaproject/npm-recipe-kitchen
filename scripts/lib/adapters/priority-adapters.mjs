@@ -51,11 +51,16 @@ export function createDefaultPriorityAdapters(overrides = {}) {
       const html = await res.text();
       const names = new Set();
       for (const match of html.matchAll(/<a href="([^"]+)\/">/g)) {
-        const href = match[1];
-        if (!href || href === '..' || href.startsWith('@calunga/')) continue;
-        const name = href.endsWith('/') ? href.slice(0, -1) : href;
-        if (name && !name.includes('/')) names.add(name);
-        if (name.startsWith('@')) names.add(name);
+        let href = match[1];
+        if (!href || href === '..' || href === '../') continue;
+        href = href.replace(/^\.\//, '').replace(/\/$/, '');
+        if (!href || href === '..') continue;
+        if (href.startsWith('@calunga/')) continue;
+        // Unscoped package directory (semver, lodash, …)
+        if (!href.startsWith('@') && !href.includes('/')) {
+          names.add(href);
+        }
+        // Scoped root only (@scope/) — skip; individual scoped packages use @scope/pkg paths
       }
       return names;
     },
