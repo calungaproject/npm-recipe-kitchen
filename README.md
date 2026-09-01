@@ -96,14 +96,15 @@ The internal modules are separated by responsibility (facts, validator, renderer
 ## Fullsend
 
 Fullsend drives the drafting run: the `npm-recipe-draft` harness in `.fullsend/` and the managed workflow in `.github/workflows/fullsend.yaml`.
-A `/fs-onboard <name@version>` comment is handled by the `npm-recipe-onboard` job in `.github/workflows/fullsend.yaml`.
+A `/fs-onboard <name@version>` comment is handled by the `npm-recipe-onboard-*` jobs in `.github/workflows/fullsend.yaml`, which call upstream `reusable-dispatch` so token minting uses the enrolled fullsend workflow identity.
 
 | Outcome | PR target | Token |
 |---------|-----------|--------|
-| `drafted` | `npm-registry` (or your fork → upstream PR) | `REGISTRY_PUSH_TOKEN` secret |
+| `drafted` | `npm-registry` (or your fork → upstream PR) | `REGISTRY_PUSH_TOKEN` secret (`npm-recipe-registry-publish` job) |
 | `needs_human` | `npm-recipe-kitchen` (`recipes/drafts/…`) | Minted `PUSH_TOKEN` only — no personal PAT |
 
 `REGISTRY_PUSH_TOKEN` is required only for `drafted` registry PRs.
 Upstream `REGISTRY_REPO_FULL_NAME` is cloned anonymously when public (no PAT read).
-For demos without upstream write access, set Actions variable `REGISTRY_PUSH_REPO_FULL_NAME` to your fork (e.g. `dperaza4dustbit/npm-registry`); each run clones upstream `main` fresh, pushes a new branch to your fork, and opens a cross-repo PR — no manual fork rebase required.
+For demos without upstream write access, set Actions variable `REGISTRY_PUSH_REPO_FULL_NAME` to your fork (e.g. `dperaza4dustbit/npm-registry`); the `npm-recipe-registry-publish` job pushes to your fork and opens a cross-repo PR — no manual fork rebase required.
+The publish job downloads the `fullsend-npm-recipe-draft` artifact uploaded by the fullsend composite action (v0.37.0) in the upstream `Dispatch` harness run.
 `kill_switch` in `.fullsend/config.yaml` disables all dispatch when set to `true`.
