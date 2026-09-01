@@ -60,8 +60,8 @@ INPUT_FILE="${RECIPE_INPUT_FILE_RUNNER:-/tmp/fullsend-npm-recipe-draft/recipe-in
 # Render into REPO_DIR — the sandbox working tree fullsend commits and pushes.
 # REPO_ROOT (this config checkout) is never committed, so rendering there would
 # silently drop the recipe from the PR. Fail closed if the runner repo root is absent.
-# shellcheck source=npm-recipe-draft/recipe-paths.sh
-source "${script_dir}/npm-recipe-draft/recipe-paths.sh"
+# shellcheck source=recipe-paths.sh
+source "${script_dir}/recipe-paths.sh"
 if ! RENDER_ROOT="$(runner_repo_root)"; then
   echo "[post-validate] REPO_DIR is not set or conflicts with TARGET_REPO_DIR; refusing to validate the recipe bundle" >&2
   exit 1
