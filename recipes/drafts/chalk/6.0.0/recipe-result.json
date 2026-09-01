@@ -1,0 +1,7 @@
+{
+  "schema_version": 2,
+  "package": "chalk@6.0.0",
+  "status": "needs_human",
+  "reason": "Facts unavailable: source repository host is unsupported or unparseable: \"chalk/chalk\" (reason_code: UNSUPPORTED_REPO_HOST). Cannot draft recipe without trusted source URL and package metadata.",
+  "escalation_target": "npm-tl-onboarding"
+}

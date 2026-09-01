@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "outcome": "needs_human",
+  "identity": "chalk@6.0.0",
+  "generated_from": "runner-side post-validation",
+  "facts_available": false,
+  "reason_code": "UNSUPPORTED_REPO_HOST",
+  "reason": "source repository host is unsupported or unparseable: \"chalk/chalk\"",
+  "verification_summary": null,
+  "fact_bundle": null,
+  "rendered": null
+}
