@@ -82,7 +82,7 @@ In `calungaproject/npm-registry` at `packages/`:
 
 Full pointers: [examples.md](examples.md).
 
-Proposal background (factory model, L1–L3, install policy): `npm-registry/docs/proposal-npm-trusted-libraries-onboarding.md`.
+Proposal background (factory model, L1–L3, install policy): `npm-registry/docs/proposal-npm-lightwell-onboarding.md`.
 
 ## Using pre-collected facts
 

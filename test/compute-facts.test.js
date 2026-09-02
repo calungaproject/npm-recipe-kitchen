@@ -339,6 +339,20 @@ describe('computeFacts — operational faults throw (retryable infra, NOT needs_
     );
   });
 
+  it('falls back to registry packed layout when packFromSource skips npm pack', async () => {
+    const out = await computeFacts('foo@1.2.3', makeOptions({
+      adapters: {
+        packFromSource: async () => ({
+          packageJson: { name: 'foo', version: '1.2.3', main: 'index.js' },
+          sourceFiles: ['package.json', 'index.js'],
+          packSkipped: true,
+        }),
+      },
+    }));
+    assert.equal(out.status, 'ok');
+    assert.ok(out.bundle.could_not_verify.some((s) => s.includes('registry tarball')));
+  });
+
   it('re-wraps a plain error tagged with an operational reason code', async () => {
     await assert.rejects(
       () => computeFacts('foo@1.2.3', makeOptions({ adapters: {

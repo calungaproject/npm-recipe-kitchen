@@ -571,16 +571,32 @@ export async function computeFacts(identity, options = {}) {
   // 13. Pack from a clean pinned source checkout (scripts disabled).
   let sourcePack;
   try {
-    sourcePack = await adapters.packFromSource({ git_url: normalizedRepo.git_url, commit_sha: commitSha });
+    sourcePack = await adapters.packFromSource({
+      git_url: normalizedRepo.git_url,
+      commit_sha: commitSha,
+      package_name: name,
+    });
   } catch (err) {
     rethrowOperational(err);
     throw err;
   }
   const sourcePackageJson = sourcePack.packageJson || {};
   const sourceFiles = Array.isArray(sourcePack.sourceFiles) ? sourcePack.sourceFiles.map(normalizeRel) : [];
-  const sourcePackedFiles = Array.isArray(sourcePack.packedFiles) ? sourcePack.packedFiles.map(normalizeRel) : packedFiles;
-  const sourcePackedJson = sourcePack.packedPackageJson || packedPackageJson;
-  const sourceTarballSha256 = sourcePack.tarballSha256 ?? (Buffer.isBuffer(sourcePack.tarball) ? sha256(sourcePack.tarball) : undefined);
+  const usedRegistryPackedLayout = sourcePack.packSkipped === true;
+  if (usedRegistryPackedLayout) {
+    couldNotVerify.push(
+      'Source npm pack --ignore-scripts failed; packed layout taken from the integrity-verified registry tarball',
+    );
+  }
+  const sourcePackedFiles = usedRegistryPackedLayout
+    ? packedFiles
+    : (Array.isArray(sourcePack.packedFiles) ? sourcePack.packedFiles.map(normalizeRel) : packedFiles);
+  const sourcePackedJson = usedRegistryPackedLayout
+    ? packedPackageJson
+    : (sourcePack.packedPackageJson || packedPackageJson);
+  const sourceTarballSha256 = usedRegistryPackedLayout
+    ? tarballSha256
+    : (sourcePack.tarballSha256 ?? (Buffer.isBuffer(sourcePack.tarball) ? sha256(sourcePack.tarball) : undefined));
 
   // 14. Classify from inspected evidence (source checkout + produced tarball).
   const classification = classifyTierA({
@@ -608,9 +624,11 @@ export async function computeFacts(identity, options = {}) {
 
   evidence.push({
     kind: 'pack-test',
-    detail: classification.eligible
-      ? `npm pack --ignore-scripts from ${commitSha} produced ${name}-${version}.tgz with the expected entrypoints`
-      : `inspected source checkout at ${commitSha} and packed layout for ${name}@${version}`,
+    detail: usedRegistryPackedLayout
+      ? `registry tarball layout used for packed evidence; source checkout at ${commitSha} inspected separately`
+      : classification.eligible
+        ? `npm pack --ignore-scripts from ${commitSha} produced ${name}-${version}.tgz with the expected entrypoints`
+        : `inspected source checkout at ${commitSha} and packed layout for ${name}@${version}`,
   });
   if (upstream.has_cli) {
     evidence.push({ kind: 'cli', detail: `CLI bin "${upstream.cli_bin_name}" -> ${upstream.cli_bin_path}` });

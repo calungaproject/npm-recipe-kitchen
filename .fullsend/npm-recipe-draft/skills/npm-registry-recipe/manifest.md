@@ -9,6 +9,7 @@ Schema: `calungaproject/npm-registry` → `docs/manifest.schema.json`
   "name": "lodash",
   "version": "4.18.1",
   "description": "Lodash modular utilities",
+  "stream": "validated",
   "native_tier": "A",
   "source": {
     "url": "https://github.com/lodash/lodash.git",
@@ -68,8 +69,9 @@ Tier C uses the same output shape; difference is in **how** `build.entrypoint.sh
 | --- | --- |
 | `name` / `version` | Must match npm publish identity; directory is `packages/<name>/<version>/` (scoped names keep `@` in manifest, path encoding follows repo convention) |
 | `description` | One line for humans/review |
+| `stream` | `"validated"` (upstream git, PoC) or `"remediated"` (fork with backport). Required. |
 | `native_tier` | `"A"`, `"B"`, or `"C"` |
-| `source.url` | HTTPS git URL |
+| `source.url` | HTTPS git URL. Validated: upstream. Remediated: fork that contains the fix. |
 | `source.ref` | Tag or commit that builds this version — prefer immutable tag matching npm release |
 | `source.ref_type` | `"tag"` or `"commit"` (document choice) |
 | `upstream_npm.version` | Expected npm version for verification |

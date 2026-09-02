@@ -223,5 +223,5 @@ After release completes for a package such as `commander@15.0.0`:
 ## Related reading
 
 - Kitchen README — agent triggers, secrets, and local validation
-- [npm-registry proposal](https://github.com/calungaproject/npm-registry/blob/main/docs/proposal-npm-trusted-libraries-onboarding.md) — factory model, tiers, and compliance schema
+- [npm-registry proposal](https://github.com/calungaproject/npm-registry/blob/main/docs/proposal-npm-lightwell-onboarding.md) — factory model, Validated vs Remediated, tiers, and compliance schema
 - [on-push and release plan](https://github.com/calungaproject/npm-registry/blob/main/docs/plan-on-push-snapshot-release.md) — Konflux pipeline stages and Pulp target
