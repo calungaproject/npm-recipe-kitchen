@@ -23,12 +23,18 @@ import { OperationalError, REASON } from '../compute-facts.mjs';
 
 // Environment variables stripped from every child process so no runner
 // credential can leak to a source host or an npm lifecycle path.
-const SENSITIVE_ENV_RE = /(TOKEN|SECRET|PASSWORD|CREDENTIAL|_KEY|GITHUB_|GH_|NPM_|GCP_|GOOGLE_|AWS_|VERTEX)/i;
+// npm_config_* keys are policy knobs (ignore_scripts, audit, fund) — never strip them.
+const SENSITIVE_ENV_RE = /(TOKEN|SECRET|PASSWORD|CREDENTIAL|_KEY|GITHUB_|GH_|^NPM_|GCP_|GOOGLE_|AWS_|VERTEX)/i;
+
+export function isSensitiveChildEnvKey(key) {
+  if (key.startsWith('npm_config_')) return false;
+  return SENSITIVE_ENV_RE.test(key);
+}
 
 function cleanEnv() {
   const env = {};
   for (const [k, v] of Object.entries(process.env)) {
-    if (SENSITIVE_ENV_RE.test(k)) continue;
+    if (isSensitiveChildEnvKey(k)) continue;
     env[k] = v;
   }
   // Belt-and-suspenders: disable npm lifecycle scripts and auth globally.
@@ -37,6 +43,70 @@ function cleanEnv() {
   env.npm_config_fund = 'false';
   env.GIT_TERMINAL_PROMPT = '0';
   return env;
+}
+
+function readPackageJson(path) {
+  return JSON.parse(readFileSync(path, 'utf-8'));
+}
+
+function isPublishablePackageJson(pkg) {
+  return typeof pkg?.name === 'string' && pkg.name.length > 0
+    && typeof pkg?.version === 'string' && pkg.version.length > 0
+    && pkg.private !== true;
+}
+
+/**
+ * Monorepos often tag the whole repo while the npm package lives under packages/*.
+ * When the repo root is private or lacks name/version, locate the workspace member.
+ */
+export function resolvePackageDir(repoRoot, packageName) {
+  const rootManifest = join(repoRoot, 'package.json');
+  if (!existsSync(rootManifest)) return repoRoot;
+  try {
+    if (isPublishablePackageJson(readPackageJson(rootManifest))) return repoRoot;
+  } catch {
+    return repoRoot;
+  }
+  if (!packageName) return repoRoot;
+
+  const packagesDir = join(repoRoot, 'packages');
+  if (existsSync(packagesDir)) {
+    for (const entry of readdirSync(packagesDir, { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue;
+      const candidate = join(packagesDir, entry.name);
+      const manifestPath = join(candidate, 'package.json');
+      if (!existsSync(manifestPath)) continue;
+      try {
+        const pkg = readPackageJson(manifestPath);
+        if (pkg.name === packageName) return candidate;
+      } catch {
+        // ignore malformed package.json
+      }
+    }
+  }
+
+  return findPackageDirByName(repoRoot, packageName, 0, 4) ?? repoRoot;
+}
+
+function findPackageDirByName(root, packageName, depth, maxDepth) {
+  if (depth > maxDepth) return null;
+  for (const entry of readdirSync(root, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+    if (entry.name === '.git' || entry.name === 'node_modules') continue;
+    const dir = join(root, entry.name);
+    const manifestPath = join(dir, 'package.json');
+    if (existsSync(manifestPath)) {
+      try {
+        const pkg = readPackageJson(manifestPath);
+        if (pkg.name === packageName) return dir;
+      } catch {
+        // ignore malformed package.json
+      }
+    }
+    const nested = findPackageDirByName(dir, packageName, depth + 1, maxDepth);
+    if (nested) return nested;
+  }
+  return null;
 }
 
 async function fetchWithLimits(url, { maxBytes, timeoutMs, accept }) {
@@ -170,7 +240,7 @@ export async function resolveSourceTag({ git_url, unscoped, version }) {
   return { status: 'unique', tag: name, commit_sha, annotated };
 }
 
-export async function packFromSource({ git_url, commit_sha }) {
+export async function packFromSource({ git_url, commit_sha, package_name }) {
   const dir = mkdtempSync(join(tmpdir(), 'nrk-src-'));
   const src = join(dir, 'src');
   const env = cleanEnv();
@@ -178,12 +248,26 @@ export async function packFromSource({ git_url, commit_sha }) {
     runOrThrow('git', ['clone', '--no-checkout', '--quiet', git_url, src], { env });
     runOrThrow('git', ['-C', src, 'checkout', '--quiet', commit_sha], { env });
 
-    const sourceFiles = listFilesRecursive(src).filter(f => !f.startsWith('.git/'));
-    const sourcePkg = JSON.parse(readFileSync(join(src, 'package.json'), 'utf-8'));
+    const packageDir = resolvePackageDir(src, package_name);
+    const sourceFiles = listFilesRecursive(packageDir).filter(f => !f.startsWith('.git/'));
+    const sourcePkg = readPackageJson(join(packageDir, 'package.json'));
 
-    const packed = runOrThrow('npm', ['pack', '--ignore-scripts', '--quiet'], { cwd: src, env });
+    let packed;
+    try {
+      // Global --ignore-scripts works across npm versions; subcommand placement can be ignored on older CLIs.
+      packed = runOrThrow('npm', ['--ignore-scripts', 'pack', '--quiet'], { cwd: packageDir, env });
+    } catch (err) {
+      if (err instanceof OperationalError && err.reason_code === REASON.CHILD_PROCESS_FAILURE) {
+        return {
+          packageJson: sourcePkg,
+          sourceFiles,
+          packSkipped: true,
+        };
+      }
+      throw err;
+    }
     const tgzName = packed.split('\n').map(s => s.trim()).filter(Boolean).pop();
-    const tgzPath = join(src, tgzName);
+    const tgzPath = join(packageDir, tgzName);
     const tarballBuf = readFileSync(tgzPath);
     const inspected = await inspectTarball({ buffer: tarballBuf });
 
