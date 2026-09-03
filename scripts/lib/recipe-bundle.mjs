@@ -9,6 +9,7 @@ import { join, resolve, relative, normalize } from 'node:path';
 import Ajv2020 from 'ajv/dist/2020.js';
 
 import { deriveManifestBinding } from './fact-bundle.mjs';
+import { validateShellCommandsForNpmBuilder } from './validate-shell-commands.mjs';
 
 export const RECIPE_PACKAGES_BASE = 'packages';
 export const RECIPE_DRAFTS_BASE = 'recipes/drafts';
@@ -252,6 +253,9 @@ function validateShellScript(path, label, errors) {
   }
   if (CONTROL_CHAR_RE.test(content.replace(/[\n\r\t]/g, ''))) {
     errors.push({ check: 'shell-control-chars', path: `/${label}`, message: `${label} contains unexpected control characters` });
+  }
+  for (const err of validateShellCommandsForNpmBuilder(content, label)) {
+    errors.push(err);
   }
 }
 

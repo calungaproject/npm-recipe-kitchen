@@ -42,10 +42,10 @@ host_files:
 # the sandbox) before the sandbox is created; a non-zero exit aborts the run. It
 # resolves the target identity (RECIPE_PACKAGE or the /fs-onboard comment) and
 # writes the facts to the path host_files copies in — so the credential-less
-# agent receives facts as data and never fabricates them. An unknown/invalid
-# package yields facts_available: false (agent emits needs_human); only genuine
-# infra faults fail the run. The path must live under .fullsend/ (traversal
-# guard); the script derives the repo root from its own location.
+# agent receives facts as data and never fabricates them. Fact-collection failure
+# posts an issue comment and aborts the run (agent never starts). The path must
+# live under .fullsend/ (traversal guard); the script derives the repo root from
+# its own location.
 pre_script: npm-recipe-draft/pre-recipe-facts.sh
 
 # Inline validation loop (ADR 0022): fullsend extracts agent output only from

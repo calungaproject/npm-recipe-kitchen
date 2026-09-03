@@ -35,22 +35,15 @@ cat "$RECIPE_INPUT_FILE"
 
 Path: `$RECIPE_INPUT_FILE` (`/sandbox/workspace/recipe-input.json`).
 
-Shape when facts exist:
+Shape (facts are always available when the agent runs — collection failures abort earlier):
 
 ```json
 { "identity": "name@version", "facts_available": true, "facts": { ... } }
 ```
 
-Shape when facts are unavailable:
-
-```json
-{ "identity": "...", "facts_available": false, "reason_code": "...", "reason": "..." }
-```
-
 Rules:
 
-- If `facts_available` is `false`, emit `needs_human` — do not guess identity, source URL, or version.
-- When `facts_available` is `true`, bind `manifest.name`, `manifest.version`, and `manifest.source.url` to the trusted facts. You choose `native_tier`, build commands, outputs, and scripts by inspecting upstream (use `facts` + git/npm inspection as needed).
+- Bind `manifest.name`, `manifest.version`, and `manifest.source.url` to the trusted facts. You choose `native_tier`, build commands, outputs, and scripts by inspecting upstream.
 - Carry every string from `facts.could_not_verify` into your result verbatim.
 
 ## Output
@@ -75,8 +68,14 @@ Required files for a **complete** draft:
 
 Optional: `tl-install.js` (Tier C or when upstream install shim is not adaptable), `evidence.md` (human review notes).
 
-- **`drafted`**: all required files must be present and pass post-validation.
-- **`needs_human`**: write a **best-effort partial draft** when you inspected upstream (same path under `packages/`). Skip recipe files only when `facts_available` is `false` and there is nothing trustworthy to draft.
+- **`drafted`**: confident, production-ready → all required files + `status: drafted`.
+- **`needs_human`**: facts OK but **not** confident → still write the full recipe under `packages/` + `status: needs_human` with `reason`. Kitchen pushes your recipe to an npm-registry **fork** and posts a manual PR link on the issue.
+
+### npm-builder command allowlist
+
+Entrypoint and smoke scripts run in the **npm-builder** factory image (`plumbing/npm-builder/Containerfile`). Before drafting scripts, read that Containerfile (or run `node scripts/format-npm-builder-inventory.mjs` on the kitchen snapshot) and **derive** available commands from `dnf install`, copied factory scripts, and gcc/rust toolsets. See [npm-builder-containerfile.md](skills/npm-registry-recipe/npm-builder-containerfile.md).
+
+Post-validation parses the pinned `registry-contract/npm-builder/Containerfile` and rejects unknown external commands. **On-pr Konflux** is the real build/smoke gate — do not rely on kitchen to run the factory image.
 
 Follow the skill docs above and canonical examples in `calungaproject/npm-registry` (`packages/lodash`, `async`, `esbuild`, `better-sqlite3`).
 
@@ -130,7 +129,7 @@ No markdown fences. Schema version **2**.
 }
 ```
 
-Do not claim the recipe is production-ready when status is `needs_human`. Post-validation copies your best-effort files into a **kitchen review PR** (`recipes/drafts/`), not npm-registry.
+Do not claim the recipe is production-ready when status is `needs_human`. Post-validation pushes your recipe to an **npm-registry fork** and posts a **manual PR link** on the kitchen issue.
 
 ## Constraints
 
@@ -139,16 +138,15 @@ Do not claim the recipe is production-ready when status is `needs_human`. Post-v
 - Tier B/C: one manifest, one entrypoint run, all `outputs[]` tarballs.
 - Platform packages: `@calunga/<unscoped-name>-linux-x64`.
 - Do not author compliance sidecar fields (`compliance_level`, gap lists).
-- `needs_human` is a valid successful outcome when the package cannot be drafted safely.
+- `needs_human` requires the full recipe file set (same as `drafted`), plus `reason` / `escalation_target`.
 - Never approve, merge, publish, or claim catalog availability.
 
 ## Workflow
 
-1. Read `recipe-input.json`.
-2. If `facts_available: false` → `needs_human` JSON only (no recipe files).
-3. Parse `identity` into npm `name` and `version`.
-4. Use `facts.classification.native_tier` as a hint only — verify by inspecting upstream repo layout (clone/read in sandbox if needed).
-5. Draft `manifest.json`, then `build.entrypoint.sh`, then `verify.smoke.sh` (+ `tl-install.js` if needed) when you can; on `needs_human` after inspection, still write whatever partial draft helps human review.
-6. Write `recipe-result.json` with `status: drafted` or `needs_human` and matching `native_tier` when drafted — **only** under `$FULLSEND_OUTPUT_DIR/` (not workspace root).
+1. Read `recipe-input.json` (trusted facts are always present).
+2. Parse `identity` into npm `name` and `version`.
+3. Use `facts.classification.native_tier` as a hint — verify by inspecting upstream.
+4. Draft `manifest.json`, `build.entrypoint.sh`, `verify.smoke.sh` (+ `tl-install.js` if needed).
+5. If confident → `status: drafted`. If not → `status: needs_human` with `reason` (still write all recipe files).
+6. Write `recipe-result.json` under `$FULLSEND_OUTPUT_DIR/` only.
 7. Run `test -f "$FULLSEND_OUTPUT_DIR/$FULLSEND_OUTPUT_FILE"` before exit.
-8. Do not write any other output files.

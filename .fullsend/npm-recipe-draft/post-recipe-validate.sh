@@ -122,6 +122,7 @@ writeFileSync(statusFile, JSON.stringify({
   output_dir: outcome.rendered?.output_dir ?? '',
   audit_path: outcome.audit_path ?? '',
   draft_source_dir: outcome.draft_source_dir ?? '',
+  auto_pr: outcome.status === 'drafted',
 }) + '\n', 'utf-8');
 writeFileSync(commentBodyFile, (outcome.message ?? '') + '\n', 'utf-8');
 VALIDATE_EOF
@@ -132,7 +133,7 @@ echo "[post-validate] Passed"
 #
 # Credentials are split by status:
 #   drafted      -> REGISTRY_PUSH_TOKEN (optional fork) for npm-registry PR only
-#   needs_human  -> PUSH_TOKEN (minted fullsend bot) for kitchen issue comment + draft PR
+#   needs_human  -> PUSH_TOKEN (issue comment) + REGISTRY_PUSH_TOKEN (fork push, manual PR link)
 #   input_error  -> PUSH_TOKEN only (issue comment)
 
 json_field() {
@@ -206,6 +207,59 @@ identity="$(json_field identity)"
 output_dir="$(json_field output_dir)"
 audit_path="$(json_field audit_path)"
 draft_source_dir="$(json_field draft_source_dir)"
+auto_pr="$(json_field auto_pr)"
+
+write_deferred_registry_publish() {
+    local defer_status="$1"
+    local defer_auto_pr="$2"
+    local defer_output_dir="$3"
+
+    if [[ -z "${identity}" || -z "${defer_output_dir}" || ! -d "${defer_output_dir}" ]]; then
+        echo "[post-validate] ${defer_status}: missing recipe bundle; skipping registry defer" >&2
+        return 1
+    fi
+
+    require_env REGISTRY_REPO_FULL_NAME      "defer registry publish"
+    require_env REGISTRY_PUSH_REPO_FULL_NAME "defer registry publish"
+    require_env ISSUE_NUMBER            "defer registry publish"
+    require_env TARGET_BRANCH           "defer registry publish"
+
+    branch="agent/${ISSUE_NUMBER}-npm-recipe-$(sanitize_ref "${identity}")"
+    pr_head="${branch}"
+    if [[ "${REGISTRY_PUSH_REPO_FULL_NAME}" != "${REGISTRY_REPO_FULL_NAME}" ]]; then
+        pr_head="${REGISTRY_PUSH_REPO_FULL_NAME%%/*}:${branch}"
+    fi
+
+    render_root="${RENDER_ROOT%/}"
+    if [[ "${defer_output_dir}" != "${render_root}"/* ]]; then
+        echo "[post-validate] rendered bundle ${defer_output_dir} is outside ${render_root}; refusing to defer publish" >&2
+        return 1
+    fi
+    bundle_rel="${defer_output_dir#"${render_root}/"}"
+
+    defer_dir="${GITHUB_WORKSPACE:-.}/output"
+    bundle_archive="${defer_dir}/registry-bundle"
+    mkdir -p "${bundle_archive}"
+    cp -a -- "${defer_output_dir}/." "${bundle_archive}/"
+    ensure_recipe_scripts_executable "${bundle_archive}"
+    jq -nc \
+        --arg identity "${identity}" \
+        --arg bundle_rel "${bundle_rel}" \
+        --arg bundle_archive "registry-bundle" \
+        --arg issue_number "${ISSUE_NUMBER}" \
+        --arg registry_repo "${REGISTRY_REPO_FULL_NAME}" \
+        --arg registry_push_repo "${REGISTRY_PUSH_REPO_FULL_NAME}" \
+        --arg target_branch "${TARGET_BRANCH}" \
+        --arg branch "${branch}" \
+        --arg pr_head "${pr_head}" \
+        --arg harness_run_id "${GITHUB_RUN_ID:-}" \
+        --arg outcome_status "${defer_status}" \
+        --argjson auto_pr "${defer_auto_pr}" \
+        '{identity:$identity,bundle_rel:$bundle_rel,bundle_archive:$bundle_archive,issue_number:$issue_number,registry_repo:$registry_repo,registry_push_repo:$registry_push_repo,target_branch:$target_branch,branch:$branch,pr_head:$pr_head,harness_run_id:$harness_run_id,outcome_status:$outcome_status,auto_pr:$auto_pr}' \
+        > "${defer_dir}/registry-publish-request.json"
+    echo "[post-validate] deferred registry publish (${defer_status}, auto_pr=${defer_auto_pr}) to npm-recipe-registry-publish job"
+    return 0
+}
 
 # Registry PR target (drafted → npm-registry). Kitchen repo (needs_human draft PR
 # + issue comments). Fall back to harness env names for backward compatibility.
@@ -260,25 +314,7 @@ case "${status}" in
                 echo "[post-validate] Set REGISTRY_PUSH_TOKEN in the harness env, or enable DEFER_REGISTRY_PUBLISH for deferred publish" >&2
                 exit 1
             fi
-            defer_dir="${GITHUB_WORKSPACE:-.}/output"
-            bundle_archive="${defer_dir}/registry-bundle"
-            mkdir -p "${bundle_archive}"
-            cp -a -- "${output_dir}/." "${bundle_archive}/"
-            ensure_recipe_scripts_executable "${bundle_archive}"
-            jq -nc \
-                --arg identity "${identity}" \
-                --arg bundle_rel "${bundle_rel}" \
-                --arg bundle_archive "registry-bundle" \
-                --arg issue_number "${ISSUE_NUMBER}" \
-                --arg registry_repo "${REGISTRY_REPO_FULL_NAME}" \
-                --arg registry_push_repo "${REGISTRY_PUSH_REPO_FULL_NAME}" \
-                --arg target_branch "${TARGET_BRANCH}" \
-                --arg branch "${branch}" \
-                --arg pr_head "${pr_head}" \
-                --arg harness_run_id "${GITHUB_RUN_ID:-}" \
-                '{identity:$identity,bundle_rel:$bundle_rel,bundle_archive:$bundle_archive,issue_number:$issue_number,registry_repo:$registry_repo,registry_push_repo:$registry_push_repo,target_branch:$target_branch,branch:$branch,pr_head:$pr_head,harness_run_id:$harness_run_id}' \
-                > "${defer_dir}/registry-publish-request.json"
-            echo "[post-validate] REGISTRY_PUSH_TOKEN not in harness env; deferred registry publish to npm-recipe-registry-publish job"
+            write_deferred_registry_publish "drafted" "true" "${output_dir}" || exit 1
             exit 0
         fi
 
@@ -317,69 +353,32 @@ Rendered from trusted deterministic facts by the npm-recipe-draft gate."
         ;;
 
     needs_human)
-        # Kitchen-only path: minted PUSH_TOKEN only (no REGISTRY_PUSH_TOKEN).
+        # Best-effort recipe: comment on issue, push fork branch, manual upstream PR link.
         require_env KITCHEN_REPO_FULL_NAME "comment on the issue"
         require_env ISSUE_NUMBER           "comment on the issue"
         require_env PUSH_TOKEN             "comment on the issue"
-        echo "[post-validate] needs_human outcome for ${identity:-<unknown>}: posting issue comment"
+        require_env REGISTRY_REPO_FULL_NAME      "defer registry publish"
+        require_env REGISTRY_PUSH_REPO_FULL_NAME "defer registry publish"
+        if [[ -z "${identity}" || -z "${output_dir}" || ! -d "${output_dir}" ]]; then
+            echo "[post-validate] needs_human is missing identity or recipe bundle; refusing" >&2
+            exit 1
+        fi
+
+        echo "[post-validate] needs_human outcome for ${identity}: posting issue comment"
         GH_TOKEN="${PUSH_TOKEN}" gh issue comment "${ISSUE_NUMBER}" \
             --repo "${KITCHEN_REPO_FULL_NAME}" \
             --body-file "${comment_body_file}"
 
-        if [[ -z "${identity}" ]]; then
-            echo "[post-validate] needs_human without identity; no draft PR to open"
+        if [[ -z "${REGISTRY_PUSH_TOKEN:-}" && "${DEFER_REGISTRY_PUBLISH:-}" == "true" ]]; then
+            write_deferred_registry_publish "needs_human" "false" "${output_dir}" || exit 1
             exit 0
+        elif [[ -z "${REGISTRY_PUSH_TOKEN:-}" ]]; then
+            echo "[post-validate] REGISTRY_PUSH_TOKEN is not set; cannot push needs_human recipe to npm-registry fork" >&2
+            exit 1
+        else
+            echo "[post-validate] inline registry publish for needs_human is not implemented; set DEFER_REGISTRY_PUBLISH=true" >&2
+            exit 1
         fi
-
-        draft_rel="$(REPO_ROOT="${REPO_ROOT}" IDENTITY="${identity}" \
-            DRAFT_SOURCE_DIR="${draft_source_dir}" RESULT_FILE="${result_file}" \
-            AUDIT_PATH="${audit_path}" REASON_FILE="${comment_body_file}" \
-            node --input-type=module <<'STAGE_EOF'
-import { readFileSync } from 'node:fs';
-import { pathToFileURL } from 'node:url';
-
-const repoRoot = process.env.REPO_ROOT;
-const modUrl = pathToFileURL(`${repoRoot}/scripts/lib/stage-recipe-draft.mjs`).href;
-const { stageRecipeDraft } = await import(modUrl);
-
-const reason = readFileSync(process.env.REASON_FILE, 'utf-8');
-const { draftRel } = stageRecipeDraft({
-  kitchenRoot: repoRoot,
-  identity: process.env.IDENTITY,
-  draftSourceDir: process.env.DRAFT_SOURCE_DIR || '',
-  resultPath: process.env.RESULT_FILE || '',
-  auditPath: process.env.AUDIT_PATH || '',
-  reason,
-});
-process.stdout.write(draftRel);
-STAGE_EOF
-        )"
-
-        branch="agent/${ISSUE_NUMBER}-npm-recipe-draft-$(sanitize_ref "${identity}")"
-        echo "[post-validate] Opening kitchen review draft PR for ${identity} on branch ${branch}"
-
-        (
-            cd -- "${REPO_ROOT}"
-            ensure_git_identity
-            git checkout -B "${branch}"
-            git add -- "${draft_rel}"
-            git commit -m "npm-recipe: draft ${identity} (needs_human)" -m "Assisted-by: Claude"
-            git remote set-url origin "https://x-access-token:${PUSH_TOKEN}@github.com/${KITCHEN_REPO_FULL_NAME}.git"
-            if ! git push -u origin -- "${branch}"; then
-                git push -u origin --force-with-lease -- "${branch}"
-            fi
-            GH_TOKEN="${PUSH_TOKEN}" gh pr create \
-                --repo "${KITCHEN_REPO_FULL_NAME}" \
-                --head "${branch}" \
-                --base "${TARGET_BRANCH}" \
-                --title "npm-recipe: draft ${identity} (needs_human)" \
-                --body "Review-only draft for \`${identity}\` (fixes #${ISSUE_NUMBER}).
-
-This PR is **not** for \`calungaproject/npm-registry\`. It stages agent output under \`recipes/drafts/\` for human review after a \`needs_human\` outcome.
-
-$(cat -- "${comment_body_file}")"
-        )
-        echo "[post-validate] Kitchen review draft PR opened for ${identity}"
         ;;
 
     input_error)

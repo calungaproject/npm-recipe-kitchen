@@ -11,9 +11,9 @@ Each candidate is an exact package name and exact version (for example `semver@7
 
 **Out:** exactly one of two bounded results per candidate (Agent 2).
 
-- `drafted` — validated recipe under `packages/<name>/<version>/` on **npm-registry** (PR opened there).
-- `needs_human` — bounded refusal with reason; best-effort draft staged under `recipes/drafts/<name>/<version>/` on **this kitchen repo** for review-only PR. No npm-registry PR.
-  `needs_human` is a successful, bounded outcome, not a failed run.
+- `drafted` — facts collected, agent confident → npm-registry fork + upstream PR (today’s auto path).
+- `needs_human` — facts collected, agent wrote a **best-effort** recipe but is not confident → issue comment + fork push + **manual** upstream PR link. No kitchen draft PR.
+- Fact collection failure → **run fails**; pre-script comments on the issue (agent never starts).
 
 Between in and out sit two deterministic, non-model gates:
 
@@ -44,9 +44,8 @@ The CLI command name may differ from the bin file's basename, so it is carried e
 
 ### Failure taxonomy (load-bearing)
 
-- **Package / policy / input / blocked** outcomes are bounded: the collector returns a stable `reason_code` and the pre-script writes `facts_available: false`, exit 0, so the agent emits `needs_human` — a successful, bounded refusal.
-  A missing/invalid **identity** is an `input_error` (never asks the model to fabricate an identity); a missing registry-contract SHA is `blocked`.
-- **Operational** faults (timeout, DNS/TLS, HTTP 429/5xx, truncation/oversize, invalid JSON, unrelated child-process failure) throw `OperationalError` → the pre-script exits non-zero → the run **fails as retryable infrastructure**. Infra faults must never masquerade as `needs_human`.
+- **Package / policy / input / blocked** outcomes **fail the run** before the agent starts. The pre-script posts an issue comment with `reason_code` and detail, then exits non-zero.
+- **Operational** faults (timeout, DNS/TLS, HTTP 429/5xx, truncation/oversize, invalid JSON, unrelated child-process failure) throw `OperationalError` → the pre-script exits non-zero → retryable infrastructure failure.
 
 ### Runner-side enforcement (Gate 0)
 
@@ -116,19 +115,37 @@ The pre-script pulls `npm-closure-index` from Quay, lists packages on the [TL np
 
 A `/fs-onboard <name@version>` comment is handled by the `npm-recipe-onboard-*` jobs in `.github/workflows/fullsend.yaml`, which call upstream `reusable-dispatch` so token minting uses the enrolled fullsend workflow identity.
 
-| Outcome | PR target | Token |
-|---------|-----------|--------|
-| `drafted` | `npm-registry` (or your fork → upstream PR) | `REGISTRY_PUSH_TOKEN` secret (`npm-recipe-registry-publish` job) |
-| `needs_human` | `npm-recipe-kitchen` (`recipes/drafts/…`) | Minted `PUSH_TOKEN` only — no personal PAT |
+| Outcome | What happens |
+|---------|----------------|
+| **Fact collection fails** | Run **fails**. Issue comment with `reason_code` + detail. Agent does not run. |
+| **`drafted`** | Fork push + auto upstream PR on `npm-registry` |
+| **`needs_human`** | Issue comment with reason + fork push + manual PR link (no auto upstream PR) |
 
-`REGISTRY_PUSH_TOKEN` is required only for `drafted` registry PRs.
+Before any registry push, CI parses the pinned **npm-builder Containerfile** and rejects recipe scripts that call commands not derived from it. The **npm-registry on-pr** pipeline runs the real factory build — kitchen does not run npm-builder locally.
+
+`REGISTRY_PUSH_TOKEN` is required for registry fork pushes (`drafted` and `needs_human` with recipe files).
 Upstream `REGISTRY_REPO_FULL_NAME` is cloned anonymously when public (no PAT read).
 For demos without upstream write access, set the **repository variable** `REGISTRY_PUSH_REPO_FULL_NAME` to your fork (e.g. `dperaza4dustbit/npm-registry` under Settings → Secrets and variables → Actions → Variables). The `npm-recipe-registry-publish` job reads that variable at publish time — it is not injected into the harness agent environment during the run.
 
 Fork demo PAT scopes:
 
 - **Git push** to your fork: `REGISTRY_PUSH_TOKEN` with **Contents: Read and write** on the fork (fine-grained scoped to the fork is fine).
-- **Open upstream PR** on `calungaproject/npm-registry`: the same token must also be allowed to **create pull requests on the upstream repo**. A fine-grained PAT scoped only to your fork fails with `Resource not accessible by personal access token (createPullRequest)`. Use a **classic** PAT with `public_repo`, or a fine-grained PAT with **Pull requests: Read and write** on `calungaproject/npm-registry`. Optionally set a separate `REGISTRY_PR_TOKEN` secret for PR creation while keeping `REGISTRY_PUSH_TOKEN` fork-only for push.
+- **Open upstream PR** on `calungaproject/npm-registry`: set **`REGISTRY_PR_TOKEN`** (or reuse `REGISTRY_PUSH_TOKEN`) with **Pull requests: Read and write** on `calungaproject/npm-registry`. A fine-grained PAT scoped only to your fork cannot `createPullRequest` on upstream.
+
+### Hook up registry tokens (when org PAT is approved)
+
+1. Create or reuse a fine-grained PAT (resource owner `calungaproject`):
+   - **Repository access:** your fork (e.g. `dperaza4dustbit/npm-registry`) for push; add `calungaproject/npm-registry` if one token should open upstream PRs.
+   - **Permissions:** Contents Read and write (fork); Pull requests Read and write (upstream, for `REGISTRY_PR_TOKEN`).
+2. Org admin approves pending token: `https://github.com/organizations/calungaproject/settings/personal-access-token-requests`
+3. Authorize SSO on the token if prompted (Developer settings → Fine-grained tokens → Configure SSO).
+4. On **`calungaproject/npm-recipe-kitchen`** → Settings → Secrets and variables → Actions:
+   - **`REGISTRY_PUSH_TOKEN`** — PAT that can push recipe branches to your fork.
+   - **`REGISTRY_PR_TOKEN`** (optional) — PAT that can open PRs on `calungaproject/npm-registry`.
+5. Set repository **variable** `REGISTRY_PUSH_REPO_FULL_NAME` to your fork (e.g. `dperaza4dustbit/npm-registry`).
+
+`drafted` outcomes: fork push + automatic upstream PR (or compare link on failure).
+`needs_human` with recipe files: fork push + compare link only (human opens upstream PR after review).
 
 If PR creation still fails, the publish job posts a compare link on the kitchen issue after a successful fork push.
 The publish job downloads the `fullsend-npm-recipe-draft` artifact uploaded by the fullsend composite action (v0.37.0) in the upstream `Dispatch` harness run.

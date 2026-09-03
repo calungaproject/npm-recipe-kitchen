@@ -54,7 +54,7 @@ except ValidationError as e:
 " "${RESULT_FILE}" "${FULLSEND_OUTPUT_SCHEMA}"
 
 status="$(jq -r '.status // empty' "${RESULT_FILE}")"
-if [[ "${status}" == "drafted" ]]; then
+if [[ "${status}" == "drafted" || "${status}" == "needs_human" ]]; then
   package="$(jq -r '.package // empty' "${RESULT_FILE}")"
   if [[ -z "${package}" || "${package}" == "null" ]]; then
     echo "FAIL: drafted result is missing package identity"
@@ -74,7 +74,7 @@ if [[ "${status}" == "drafted" ]]; then
     fi
   done
   if [[ ${#missing[@]} -gt 0 ]]; then
-    echo "FAIL: drafted result requires recipe files under ${recipe_dir}/"
+    echo "FAIL: ${status} result requires recipe files under ${recipe_dir}/"
     for path in "${missing[@]}"; do
       echo "  missing: ${path}"
     done
