@@ -35,6 +35,7 @@ Do **not** create `out/` (factory output, gitignored). Do **not** author `compli
 3. **One manifest → one factory run → every `outputs[]` path** must exist after build (Tier B/C: main + platform).
 4. **Platform packages use `@calunga/<unscoped-name>-linux-x64`** at the same version as the main package.
 5. **Treat merged recipes as immutable** — fixes ship as a new version directory.
+6. **Use only npm-builder commands** — derive from `plumbing/npm-builder/Containerfile` (see [npm-builder-containerfile.md](npm-builder-containerfile.md)). Post-validation parses the pinned snapshot; Konflux on-pr runs the real build.
 
 Factory env vars (always available in entrypoint/smoke):
 
@@ -86,17 +87,15 @@ Proposal background (factory model, L1–L3, install policy): `npm-registry/docs
 
 ## Using pre-collected facts
 
-When `recipe-input.json` is present (`facts_available: true`), treat as authoritative for:
+When `recipe-input.json` is present, treat `facts` as authoritative for:
 
 - package identity, git URL, commit SHA, tag
 - upstream `main_entry`, CLI layout, provenance flags
 - `could_not_verify` gaps (carry into evidence; do not silently ignore)
 
-You still **infer** tier, build commands, staging layout, smoke checks, and manifest `description` from upstream inspection. Facts narrow identity and source pinning; they do not replace reading the repo.
+You still **infer** tier, build commands, staging layout, smoke checks, and manifest `description` from upstream inspection.
 
-When `facts_available: false`, do not fabricate source SHAs or versions — emit `needs_human` with the provided reason (JSON only; no recipe files).
-
-On `needs_human` after upstream inspection, still write a **best-effort partial** recipe under `packages/<name>/<version>/`. Post-validation copies it to `recipes/drafts/` on the kitchen repo for a review-only PR — not to npm-registry.
+If you are **not confident** the recipe is production-ready, emit `needs_human` with `reason` — but still write the **full** recipe under `packages/<name>/<version>/`. Kitchen pushes it to an npm-registry fork and posts a manual upstream PR link.
 
 ## Confidence and escalation
 
@@ -112,6 +111,7 @@ When drafting, include a short `evidence.md` (optional locally) listing: repo UR
 
 ## Additional resources
 
+- [npm-builder-containerfile.md](npm-builder-containerfile.md) — derive available commands from the factory Containerfile
 - [tier-guide.md](tier-guide.md) — classification detail
 - [manifest.md](manifest.md) — field-by-field manifest guide
 - [build-entrypoint.md](build-entrypoint.md) — entrypoint patterns and helpers

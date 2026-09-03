@@ -127,7 +127,7 @@ Popularity scoring favors widely used packages when closure impact is equal.
 | **Trigger** | `/fs-onboard <name@version>` issue comment (from Agent 1, a maintainer, or manual replay) |
 | **Deterministic work** | Collect a trusted fact bundle (tarball integrity, git tag→commit, tier hints); validate and render recipe files; post-validate against facts |
 | **Model work** | Infer native tier; draft `manifest.json`, `build.entrypoint.sh`, and `verify.smoke.sh` |
-| **Output** | `drafted` → PR to **npm-registry** under `packages/<name>/<version>/`; `needs_human` → review-only draft PR on this kitchen repo |
+| **Output** | `drafted` → npm-registry fork + upstream PR; `needs_human` (with recipe files) → fork branch + review link, kitchen `recipes/drafts/` PR |
 
 Agent 2 never signs, merges, or publishes.
 A follow-up job (`npm-recipe-registry-publish` in `fullsend.yaml`) pushes the drafted bundle to npm-registry (or a fork) after the harness succeeds.

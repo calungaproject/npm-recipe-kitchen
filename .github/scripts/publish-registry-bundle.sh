@@ -32,6 +32,8 @@ issue_number="$(jq -r '.issue_number' "${request_file}")"
 artifact_registry_repo="$(jq -r '.registry_repo' "${request_file}")"
 target_branch="$(jq -r '.target_branch' "${request_file}")"
 branch="$(jq -r '.branch' "${request_file}")"
+outcome_status="$(jq -r '.outcome_status // "drafted"' "${request_file}")"
+auto_pr="$(jq -r '.auto_pr // true' "${request_file}")"
 
 if [[ -z "${identity}" || "${identity}" == "null" ]]; then
   echo "::error::registry-publish-request.json is missing identity" >&2
@@ -83,20 +85,58 @@ if ! git push "${push_url}" "HEAD:${branch}"; then
 fi
 
 pr_title="npm-recipe: onboard ${identity}"
+if [[ "${outcome_status}" == "needs_human" ]]; then
+  pr_title="npm-recipe: review ${identity} (needs_human)"
+fi
 pr_body="$(cat <<EOF
 Automated npm recipe onboarding for \`${identity}\` (fixes #${issue_number}).
 
 Rendered from trusted deterministic facts by the npm-recipe-draft gate.
 EOF
 )"
-pr_token="${REGISTRY_PR_TOKEN:-${REGISTRY_PUSH_TOKEN}}"
+if [[ "${outcome_status}" == "needs_human" ]]; then
+  pr_body="$(cat <<EOF
+Agent \`needs_human\` outcome for \`${identity}\` (fixes #${issue_number}).
+
+Recipe was pushed to \`${trusted_push_repo}\` branch \`${branch}\` for human review before opening an upstream PR on \`${expected_registry_repo}\`.
+EOF
+)"
+fi
+
 compare_url="$(jq -nr \
   --arg base "${expected_registry_repo}" \
   --arg target "${target_branch}" \
   --arg head "${pr_head}" \
   --arg title "${pr_title}" \
   --arg body "${pr_body}" \
-  '"https://github.com/\($base)/compare/\($target)...\($head)?quick_pull=1&title=" + ($title|@uri) + "&body=" + ($body|@uri)')"
+  '"https://github.com/\($base)/compare/\($target)...\($head)?quick_pull=1&title=" + ($title|@uri) + "&body=" + ($body|@uri)')
+
+post_manual_pr_link() {
+  local extra_note="${1:-}"
+  kitchen_token="${KITCHEN_GITHUB_TOKEN:-${GITHUB_TOKEN:-}}"
+  if [[ -z "${issue_number}" || -z "${KITCHEN_REPO_FULL_NAME:-}" || -z "${kitchen_token}" ]]; then
+    echo "::error::Cannot post manual PR link on kitchen issue (need issue_number, KITCHEN_REPO_FULL_NAME, and kitchen token)" >&2
+    exit 1
+  fi
+
+  comment_body="$(cat <<EOF
+Registry branch \`${branch}\` was pushed to \`${trusted_push_repo}\`. ${extra_note}
+
+[Open the npm-registry PR manually](${compare_url})
+EOF
+)"
+  GH_TOKEN="${kitchen_token}" gh issue comment "${issue_number}" \
+    --repo "${KITCHEN_REPO_FULL_NAME}" \
+    --body "${comment_body}"
+  echo "::warning::Posted manual PR link on issue #${issue_number}"
+}
+
+if [[ "${auto_pr}" != "true" ]]; then
+  post_manual_pr_link "Automated upstream PR creation is skipped for \`needs_human\` outcomes — review the fork branch, then open the PR when ready."
+  exit 0
+fi
+
+pr_token="${REGISTRY_PR_TOKEN:-${REGISTRY_PUSH_TOKEN}}"
 
 open_registry_pr() {
   GH_TOKEN="${pr_token}" gh pr create \
@@ -117,22 +157,5 @@ echo "::error::Use a classic PAT with public_repo, or a fine-grained PAT with Pu
 echo "::error::Optionally set REGISTRY_PR_TOKEN to a separate PAT with those scopes; REGISTRY_PUSH_TOKEN can stay push-scoped." >&2
 echo "::error::Open manually: ${compare_url}" >&2
 
-kitchen_token="${KITCHEN_GITHUB_TOKEN:-${GITHUB_TOKEN:-}}"
-if [[ -z "${issue_number}" || -z "${KITCHEN_REPO_FULL_NAME:-}" || -z "${kitchen_token}" ]]; then
-  echo "::error::Cannot post manual PR link on kitchen issue (need issue_number, KITCHEN_REPO_FULL_NAME, and kitchen token)" >&2
-  exit 1
-fi
-
-comment_body="$(cat <<EOF
-Registry branch \`${branch}\` was pushed to \`${trusted_push_repo}\`, but automated PR creation failed (PAT cannot \`createPullRequest\` on \`${expected_registry_repo}\`).
-
-[Open the npm-registry PR manually](${compare_url})
-
-To automate PR creation, use a **classic** PAT with \`public_repo\` scope, or a **fine-grained** PAT with **Pull requests: Read and write** on \`${expected_registry_repo}\` (set \`REGISTRY_PR_TOKEN\`, or reuse \`REGISTRY_PUSH_TOKEN\` for both push and PR).
-EOF
-)"
-GH_TOKEN="${kitchen_token}" gh issue comment "${issue_number}" \
-  --repo "${KITCHEN_REPO_FULL_NAME}" \
-  --body "${comment_body}"
-echo "::warning::Push succeeded; posted manual PR link on issue #${issue_number}"
+post_manual_pr_link "Automated PR creation failed (PAT cannot \`createPullRequest\` on \`${expected_registry_repo}\`)."
 exit 0

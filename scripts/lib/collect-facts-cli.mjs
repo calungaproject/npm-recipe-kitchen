@@ -6,8 +6,8 @@
 //
 //   - OperationalError (retryable infra: timeout, DNS/TLS, 429, 5xx, truncation,
 //     oversize, invalid JSON, unrelated child failure) -> exit 1, FAIL THE RUN.
-//   - Every package/policy/input/blocked outcome -> facts_available:false written
-//     to the input file, exit 0, so the agent emits a bounded needs_human.
+//   - Every package/policy/input/blocked outcome -> write failure details to the
+//     input file and exit 1 (fail the run; pre-script comments on the issue).
 //
 // Env:
 //   IDENTITY                      name@version to onboard ('' -> input_error)
@@ -64,9 +64,18 @@ async function main() {
     throw err;
   }
 
+  if (outcome.status !== 'ok') {
+    const payload = toAgentInput(identity, outcome);
+    writeFileSync(inputFile, JSON.stringify(payload, null, 2) + '\n', 'utf-8');
+    console.error(
+      `[collect-facts] FACT COLLECTION FAILED (${payload.reason_code ?? 'UNKNOWN'}): ${payload.reason ?? 'no reason'}`,
+    );
+    process.exit(1);
+  }
+
   const payload = toAgentInput(identity, outcome);
   writeFileSync(inputFile, JSON.stringify(payload, null, 2) + '\n', 'utf-8');
-  console.log(`[collect-facts] wrote ${inputFile} (facts_available=${payload.facts_available}${payload.reason_code ? `, reason_code=${payload.reason_code}` : ''})`);
+  console.log(`[collect-facts] wrote ${inputFile} (facts_available=true)`);
 }
 
 main().catch((err) => {

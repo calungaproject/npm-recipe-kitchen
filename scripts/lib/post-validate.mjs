@@ -54,20 +54,16 @@ export function runPostValidation({ resultPath, inputPath, repoRoot, renderRoot,
 
   const factsAvailable = input.facts_available === true;
   const facts = input.facts;
-  const inputError = input.input_error === true;
 
-  if (inputError) {
-    if (result.status === 'drafted') {
-      return { ok: false, reason_code: 'DRAFT_ON_INPUT_ERROR', message: 'a drafted result is not permitted for an invalid/missing package identity' };
-    }
-    const audit_path = persistAudit({ auditDir, repoRoot, input, outcome: 'input_error' });
-    return { ok: true, status: 'input_error', identity: input.identity, reason_code: input.reason_code, message: input.reason, audit_path };
+  if (!factsAvailable) {
+    return {
+      ok: false,
+      reason_code: 'FACTS_UNAVAILABLE',
+      message: input.reason ?? 'fact collection failed before the agent run',
+    };
   }
 
   if (result.status === 'drafted') {
-    if (!factsAvailable || !facts) {
-      return { ok: false, reason_code: 'DRAFT_WITHOUT_FACTS', message: 'a drafted result is not permitted when facts are unavailable' };
-    }
     const factCheck = validateFacts(facts);
     if (!factCheck.valid) {
       return { ok: false, reason_code: 'INVALID_FACT_BUNDLE', errors: factCheck.errors, message: 'fact bundle failed validation; refusing to draft' };
@@ -120,26 +116,49 @@ export function runPostValidation({ resultPath, inputPath, repoRoot, renderRoot,
   }
 
   if (result.status === 'needs_human') {
-    const expectedIdentity = facts?.identity ?? input.identity;
+    const expectedIdentity = facts.identity ?? input.identity;
     const validation = validateNeedsHumanResult(result, expectedIdentity);
     if (!validation.valid) {
       return { ok: false, reason_code: 'RESULT_REJECTED', errors: validation.errors, message: 'needs_human result rejected' };
     }
-    const audit_path = persistAudit({ auditDir, repoRoot, input, outcome: 'needs_human' });
-    let draft_source_dir = '';
-    if (expectedIdentity) {
-      const candidate = recipeDirForIdentity(renderTarget, expectedIdentity);
-      if (candidate && existsSync(candidate)) {
-        draft_source_dir = candidate;
-      }
+
+    const recipeDir = recipeDirForIdentity(renderTarget, result.package);
+    if (!recipeDir || !existsSync(recipeDir)) {
+      return {
+        ok: false,
+        reason_code: 'NEEDS_HUMAN_MISSING_RECIPE',
+        message: 'needs_human requires a best-effort recipe under packages/<name>/<version>/',
+      };
     }
+
+    const bundleCheck = validateRecipeBundle({
+      recipeDir,
+      renderRoot: renderTarget,
+      facts,
+    });
+    if (!bundleCheck.valid) {
+      return {
+        ok: false,
+        reason_code: 'RECIPE_BUNDLE_REJECTED',
+        errors: bundleCheck.errors,
+        message: 'needs_human recipe bundle failed validation',
+      };
+    }
+
+    const audit_path = persistAudit({ auditDir, repoRoot, input, outcome: 'needs_human' });
+    const rendered = {
+      output_dir: recipeDir,
+      files: bundleCheck.files ?? [],
+      native_tier: bundleCheck.manifest?.native_tier ?? result.native_tier ?? null,
+    };
     return {
       ok: true,
       status: 'needs_human',
       identity: expectedIdentity,
       message: result.reason,
       audit_path,
-      draft_source_dir,
+      draft_source_dir: recipeDir,
+      rendered,
     };
   }
 

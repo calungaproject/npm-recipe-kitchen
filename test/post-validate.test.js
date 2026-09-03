@@ -136,7 +136,7 @@ describe('runPostValidation — drafted is impossible without an exact valid bun
 
     const res = run(inputPath, resultPath);
     assert.equal(res.ok, false);
-    assert.equal(res.reason_code, 'DRAFT_WITHOUT_FACTS');
+    assert.equal(res.reason_code, 'FACTS_UNAVAILABLE');
   });
 
   it('refuses to draft on an input_error', async () => {
@@ -153,7 +153,7 @@ describe('runPostValidation — drafted is impossible without an exact valid bun
 
     const res = run(inputPath, resultPath);
     assert.equal(res.ok, false);
-    assert.equal(res.reason_code, 'DRAFT_ON_INPUT_ERROR');
+    assert.equal(res.reason_code, 'FACTS_UNAVAILABLE');
   });
 
   it('refuses when the fact bundle file is missing entirely', () => {
@@ -165,21 +165,39 @@ describe('runPostValidation — drafted is impossible without an exact valid bun
 });
 
 describe('runPostValidation — needs_human and input_error', () => {
-  it('accepts needs_human for an unknown package and does not require recipe files', async () => {
-    const out = await computeFacts('foo@1.2.3', makeOptions({ adapters: { getPackument: async () => null } }));
-    assert.equal(out.status, 'needs_human');
-    const inputPath = writeInputFromOutcome('foo@1.2.3', out);
-    const resultPath = writeResult({ schema_version: 2, package: 'foo@1.2.3', status: 'needs_human', reason: 'not found', escalation_target: 'team' });
+  it('rejects needs_human when facts are unavailable', async () => {
+    const inputPath = writeInput({ identity: 'foo@1.2.3', facts_available: false, reason_code: 'PACKAGE_NOT_FOUND', reason: 'x' });
+    const resultPath = writeResult({
+      schema_version: 2,
+      package: 'foo@1.2.3',
+      status: 'needs_human',
+      reason: 'not found',
+      escalation_target: 'team',
+    });
+    writeMinimalTierARecipe(work, semverFacts());
 
     const res = run(inputPath, resultPath);
-    assert.equal(res.ok, true, JSON.stringify(res));
-    assert.equal(res.status, 'needs_human');
-    assert.equal(res.rendered, undefined);
-    assert.equal(res.draft_source_dir, '');
-    assert.ok(!existsSync(join(work, 'packages', 'foo', '1.2.3')));
+    assert.equal(res.ok, false);
+    assert.equal(res.reason_code, 'FACTS_UNAVAILABLE');
   });
 
-  it('reports draft_source_dir when agent wrote a best-effort bundle on needs_human', async () => {
+  it('rejects needs_human without recipe files', async () => {
+    const bundle = semverFacts();
+    const inputPath = writeInputFromOutcome('semver@7.7.2', { status: 'ok', bundle });
+    const resultPath = writeResult({
+      schema_version: 2,
+      package: 'semver@7.7.2',
+      status: 'needs_human',
+      reason: 'tier unclear',
+      escalation_target: 'npm-tl-onboarding',
+    });
+
+    const res = run(inputPath, resultPath);
+    assert.equal(res.ok, false);
+    assert.equal(res.reason_code, 'NEEDS_HUMAN_MISSING_RECIPE');
+  });
+
+  it('accepts needs_human with a validated best-effort bundle', async () => {
     const bundle = semverFacts();
     const inputPath = writeInputFromOutcome('semver@7.7.2', { status: 'ok', bundle });
     writeMinimalTierARecipe(work, bundle);
@@ -195,11 +213,12 @@ describe('runPostValidation — needs_human and input_error', () => {
     assert.equal(res.ok, true, JSON.stringify(res));
     assert.equal(res.status, 'needs_human');
     assert.equal(res.draft_source_dir, join(work, 'packages', 'semver', '7.7.2'));
+    assert.ok(res.rendered?.output_dir);
   });
 
   it('rejects needs_human that re-targets a different identity', async () => {
-    const out = await computeFacts('foo@1.2.3', makeOptions({ adapters: { getPackument: async () => null } }));
-    const inputPath = writeInputFromOutcome('foo@1.2.3', out);
+    const bundle = semverFacts();
+    const inputPath = writeInputFromOutcome('semver@7.7.2', { status: 'ok', bundle });
     const resultPath = writeResult({ schema_version: 2, package: 'other@2.0.0', status: 'needs_human', reason: 'x', escalation_target: 'team' });
 
     const res = run(inputPath, resultPath);
@@ -207,14 +226,13 @@ describe('runPostValidation — needs_human and input_error', () => {
     assert.ok(res.errors.some(e => e.check === 'identity-match'));
   });
 
-  it('accepts needs_human for an input_error identity', () => {
+  it('rejects input_error payloads at post-validate when agent should not have run', () => {
     const inputPath = writeInput({ identity: 'bad', facts_available: false, input_error: true, reason_code: 'INVALID_IDENTITY', reason: 'bad identity' });
     const resultPath = writeResult({ schema_version: 2, package: 'placeholder@0.0.0', status: 'needs_human', reason: 'bad identity', escalation_target: 'triage' });
 
     const res = run(inputPath, resultPath);
-    assert.equal(res.ok, true, JSON.stringify(res));
-    assert.equal(res.status, 'input_error');
-    assert.equal(res.reason_code, 'INVALID_IDENTITY');
+    assert.equal(res.ok, false);
+    assert.equal(res.reason_code, 'FACTS_UNAVAILABLE');
   });
 });
 

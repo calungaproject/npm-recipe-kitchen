@@ -1,0 +1,101 @@
+# TL npm factory builder — linux-x64, glibc (UBI8), Node 20 LTS + Go + Rust.
+# Used by Konflux build-npm-package tasks; onboarder recipes run via build-npm-package.
+# Keep ARG BASEIMAGE in sync with baseimage.lock.
+ARG BASEIMAGE=registry.access.redhat.com/ubi8/ubi@sha256:28a85f76ad1ea0a46a81a934b02fff48d75541f77777be403d48b6bb99a363ad
+# Syft: Red Hat tech-preview image (SPDX SBOM; pin intentionally).
+ARG SYFT_IMAGE=registry.redhat.io/rh-syft-tech-preview/syft-rhel9:1.29.0-1756223792@sha256:15ed82f0b5311a570ccb8ea02135d9776c6d61e545c51b256b3fc5b5db20ba67
+
+FROM ${SYFT_IMAGE} AS syft-bin
+
+FROM ${BASEIMAGE} AS tools
+
+LABEL maintainer="Red Hat Trusted Libraries"
+LABEL io.k8s.description="npm TL factory builder (Node 20, Go, Rust, glibc)"
+LABEL org.opencontainers.image.source="https://github.com/calungaproject/plumbing"
+
+ENV LC_ALL=en_US.UTF-8 \
+    LANG=en_US.UTF-8 \
+    LANGUAGE=en_US.UTF-8 \
+    NODE_ENV=production \
+    NPM_CONFIG_UPDATE_NOTIFIER=false
+
+RUN dnf -y module enable nodejs:20 && \
+    dnf -y install \
+        --setopt install_weak_deps=0 \
+        glibc-langpack-en \
+        nodejs \
+        npm \
+        git \
+        golang \
+        python3 \
+        python3-pip \
+        ca-certificates \
+        tar \
+        gzip \
+        xz \
+        jq \
+        which \
+        findutils \
+        grep \
+        patch \
+        make \
+        gcc \
+        gcc-c++ \
+        pkg-config \
+        openssl-devel \
+        && dnf clean all \
+        && rm -rf /var/cache/dnf
+
+# gcc-toolset pin: edit gcc-toolset.lock only (single source of truth).
+COPY gcc-toolset.lock build_scripts/install-gcc-toolset.sh /tmp/
+RUN chmod +x /tmp/install-gcc-toolset.sh && \
+    /tmp/install-gcc-toolset.sh && \
+    rm -f /tmp/install-gcc-toolset.sh /tmp/gcc-toolset.lock && \
+    dnf clean all && \
+    rm -rf /var/cache/dnf
+
+# Rust version pin: edit rust-toolset.lock only (single source of truth).
+COPY rust-toolset.lock build_scripts/install-rust-toolset.sh /tmp/
+RUN chmod +x /tmp/install-rust-toolset.sh && \
+    /tmp/install-rust-toolset.sh && \
+    rm -f /tmp/install-rust-toolset.sh /tmp/rust-toolset.lock && \
+    dnf clean all && \
+    rm -rf /var/cache/dnf
+
+COPY --from=syft-bin /usr/local/bin/syft /usr/local/bin/syft
+
+RUN useradd -m -u 1001 -s /bin/bash builder
+
+##########################
+# UNIT TESTS (must pass)
+##########################
+FROM tools AS test
+COPY scripts /src/scripts
+COPY tests /src/tests
+RUN chmod +x /src/scripts/* /src/tests/*.sh \
+    && /src/tests/run_tests.sh \
+    && touch /tmp/npm-builder-tests-ok
+
+##########################
+# ASSEMBLE THE FINAL IMAGE
+##########################
+FROM tools
+# Gate the final image on the unit-test stage.
+COPY --from=test /tmp/npm-builder-tests-ok /tmp/npm-builder-tests-ok
+
+COPY --chmod=755 scripts/shasum /usr/local/bin/shasum
+COPY --chmod=755 scripts/build-npm-package scripts/build-npm-packages scripts/collect-npm-artifacts scripts/collect-npm-package-outputs scripts/generate-npm-sbom scripts/verify-npm-sbom scripts/assess-npm-compliance scripts/lookup-npm-tl-compliance scripts/record-npm-packages-built scripts/npm-workdir-load.sh scripts/npm-publish-pulp /usr/local/bin/
+COPY --chmod=644 scripts/npm-workdir-env.sh /usr/local/lib/npm-builder/
+ENV NPM_BUILDER_LIB=/usr/local/lib/npm-builder
+
+# gcc-toolset + rust-toolset + llvm-toolset under /opt/rh/* — node-gyp uses CC/CXX.
+# GCC_TOOLSET must match gcc-toolset.lock (currently 14).
+ENV GCC_TOOLSET_ROOT=/opt/rh/gcc-toolset-14/root \
+    CC=/opt/rh/gcc-toolset-14/root/usr/bin/gcc \
+    CXX=/opt/rh/gcc-toolset-14/root/usr/bin/g++ \
+    PATH="/opt/rh/gcc-toolset-14/root/usr/bin:/opt/rh/rust-toolset/root/usr/bin:/opt/rh/llvm-toolset/root/usr/bin:/usr/local/bin:${PATH}"
+
+WORKDIR /work
+USER builder
+
+CMD ["bash"]

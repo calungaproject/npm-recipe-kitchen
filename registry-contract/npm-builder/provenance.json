@@ -1,0 +1,7 @@
+{
+  "repository": "calungaproject/plumbing",
+  "commit_sha": "98f9a71e1d1590ff0356eec9b4c7f61454b86e24",
+  "containerfile_path": "npm-builder/Containerfile",
+  "image": "quay.io/redhat-user-workloads/calunga-tenant/npm-builder",
+  "retrieved_at": "2026-09-03"
+}
