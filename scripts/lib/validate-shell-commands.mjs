@@ -16,6 +16,22 @@ const SHELL_BUILTINS = new Set([
 ]);
 
 const ASSIGNMENT_PREFIX_RE = /^[A-Za-z_][A-Za-z0-9_]*=/;
+const FUNCTION_DEF_RE = /^\s*(?:function\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*\(\)\s*\{/;
+const FUNCTION_CALL_RE = /^([A-Za-z_][A-Za-z0-9_]*)\(\)$/;
+
+/**
+ * Bash functions defined in the script (not external binaries).
+ * @param {string} content
+ * @returns {Set<string>}
+ */
+export function extractShellFunctionNames(content) {
+  const names = new Set();
+  const re = /^\s*(?:function\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*\(\)\s*\{/gm;
+  for (const m of content.matchAll(re)) {
+    names.add(m[1].toLowerCase());
+  }
+  return names;
+}
 
 /**
  * Strip # comments (naive; sufficient for recipe scripts).
@@ -57,15 +73,115 @@ function stripCommandSubstitutions(s) {
 }
 
 /**
+ * Remove heredoc bodies (node <<'EOF' … EOF, etc.).
+ * @param {string} content
+ */
+function stripHeredocs(content) {
+  const lines = content.split('\n');
+  const out = [];
+  let i = 0;
+  while (i < lines.length) {
+    const line = lines[i];
+    const m = line.match(/<<-?\s*(?:'(\w+)'|"(\w+)"|(\w+))\s*$/);
+    if (m) {
+      const delim = m[1] || m[2] || m[3];
+      const stripTabs = line.includes('<<-');
+      i += 1;
+      while (i < lines.length) {
+        const end = stripTabs ? lines[i].replace(/^\t+/, '') : lines[i];
+        if (end.trim() === delim) {
+          i += 1;
+          break;
+        }
+        i += 1;
+      }
+      out.push(' ');
+      continue;
+    }
+    out.push(line);
+    i += 1;
+  }
+  return out.join('\n');
+}
+
+/**
+ * Collapse multiline node -e '…' / "…" blocks; preserve prefix/suffix on the same line.
+ * @param {string} content
+ */
+function stripMultilineNodeE(content) {
+  const lines = content.split('\n');
+  const out = [];
+  let i = 0;
+  while (i < lines.length) {
+    const line = lines[i];
+    const nodeIdx = line.search(/\bnode\s+-e\s+/);
+    if (nodeIdx < 0) {
+      out.push(line);
+      i += 1;
+      continue;
+    }
+    const before = line.slice(0, nodeIdx);
+    let after = line.slice(nodeIdx);
+    let quote = null;
+    for (const ch of after) {
+      if (ch === "'" || ch === '"') {
+        if (!quote) quote = ch;
+        else if (quote === ch) quote = null;
+      }
+    }
+    while (quote && i + 1 < lines.length) {
+      i += 1;
+      after += `\n${lines[i]}`;
+      for (const ch of lines[i]) {
+        if (ch === "'" || ch === '"') {
+          if (!quote) quote = ch;
+          else if (quote === ch) quote = null;
+        }
+      }
+    }
+    let suffix = '';
+    if (!quote) {
+      const lastLine = after.split('\n').pop() ?? '';
+      const m = lastLine.match(/^.*?\bnode\s+-e\s+(?:'[^']*'|"[^"]*")(.*)$/);
+      if (m) suffix = m[1];
+    }
+    out.push(`${before}node -e "..."${suffix}`);
+    i += 1;
+  }
+  return out.join('\n');
+}
+
+/**
  * Remove quoted strings and command substitutions so we only scan top-level commands.
  * @param {string} content
  */
 function stripNestedShell(content) {
   let s = stripCommandSubstitutions(content);
   s = s.replace(/`[^`]*`/g, ' ');
-  s = s.replace(/'[^'\\]*(?:\\.[^'\\]*)*'/g, ' ');
-  s = s.replace(/"[^"\\]*(?:\\.[^"\\]*)*"/g, ' ');
-  return s;
+  // Multiline-safe: toggle quote state per character.
+  let out = '';
+  let inSingle = false;
+  let inDouble = false;
+  for (let i = 0; i < s.length; i += 1) {
+    const ch = s[i];
+    const prev = i > 0 ? s[i - 1] : '';
+    if (ch === "'" && !inDouble && prev !== '\\') {
+      inSingle = !inSingle;
+      out += ' ';
+      continue;
+    }
+    if (ch === '"' && !inSingle && prev !== '\\') {
+      inDouble = !inDouble;
+      out += ' ';
+      continue;
+    }
+    if (inSingle || inDouble) {
+      out += ' ';
+      continue;
+    }
+    out += ch;
+  }
+  return out;
 }
 
 /**
@@ -87,8 +203,11 @@ function firstCommandName(segment) {
   if (s.startsWith('(') || s.startsWith('{') || s.startsWith('!')) return null;
 
   const tokens = s.split(/\s+/);
-  const first = tokens[0];
+  let first = tokens[0];
   if (!first) return null;
+
+  const fnCall = first.match(FUNCTION_CALL_RE);
+  if (fnCall) first = fnCall[1];
 
   if (first.startsWith('./') || first.startsWith('../') || first.startsWith('/')) {
     return null;
@@ -113,18 +232,21 @@ function firstCommandName(segment) {
  */
 export function extractExternalCommands(content) {
   const names = new Set();
-  const withoutHeredoc = content.replace(/<<-?\s*['"]?(\w+)['"]?[\s\S]*?\n\1/g, '');
+  const localFunctions = extractShellFunctionNames(content);
+  const stripped = stripMultilineNodeE(stripHeredocs(content));
 
-  for (const rawLine of withoutHeredoc.split('\n')) {
+  for (const rawLine of stripped.split('\n')) {
     const commented = stripLineComment(rawLine).trim();
     if (!commented) continue;
+    if (FUNCTION_DEF_RE.test(commented)) continue;
     const line = stripNestedShell(commented).trim();
     if (!line) continue;
 
     const segments = line.split(/&&|\|\||;|\|/);
     for (const segment of segments) {
       const name = firstCommandName(segment);
-      if (name) names.add(name);
+      if (!name || localFunctions.has(name)) continue;
+      names.add(name);
     }
   }
   return [...names];
@@ -137,11 +259,12 @@ export function extractExternalCommands(content) {
  */
 export function validateShellCommandsForNpmBuilder(content, label) {
   const { commands: allowed } = loadNpmBuilderInventory();
+  const localFunctions = extractShellFunctionNames(content);
   const errors = [];
   const seen = new Set();
 
   for (const name of extractExternalCommands(content)) {
-    if (SHELL_BUILTINS.has(name) || allowed.has(name)) continue;
+    if (SHELL_BUILTINS.has(name) || allowed.has(name) || localFunctions.has(name)) continue;
     if (seen.has(name)) continue;
     seen.add(name);
     errors.push({
