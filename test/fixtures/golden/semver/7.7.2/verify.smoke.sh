@@ -31,7 +31,7 @@ tgz_has_member() {
 dump_tgz_listing() {
     local tgz="$1"
     echo "Tarball listing (${tgz}):" >&2
-    tar tf "${tgz}" >&2 || file "${tgz}" >&2 || true
+    tar tf "${tgz}" >&2 || true
 }
 
 for member in package/package.json package/index.js package/bin/semver.js; do

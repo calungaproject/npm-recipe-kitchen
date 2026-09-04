@@ -14,7 +14,7 @@ Study these merged recipes in `calungaproject/npm-registry` (`packages/`). Clone
 ### async@3.2.6 — JS build before pack
 
 - **Path:** `packages/async/3.2.6/`
-- **Pattern:** clone → `npm install --ignore-scripts` → `npm run build` → `npm pack`
+- **Pattern:** clone → `npm install --include=dev --ignore-scripts` → `npm run build` → `npm pack`
 - **Smoke:** `package/dist/async.js`
 - **Copy when:** TypeScript/bundler produces `dist/` at build time but no native platform package
 

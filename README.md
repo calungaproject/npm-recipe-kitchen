@@ -121,7 +121,7 @@ A `/fs-onboard <name@version>` comment is handled by the `npm-recipe-onboard-*` 
 | **`drafted`** | Fork push + auto upstream PR on `npm-registry` |
 | **`needs_human`** | Issue comment with reason + fork push + manual PR link (no auto upstream PR) |
 
-Before any registry push, CI parses the pinned **npm-builder Containerfile** and rejects recipe scripts that call commands not derived from it. The **npm-registry on-pr** pipeline runs the real factory build — kitchen does not run npm-builder locally.
+Before any registry push, CI parses the pinned **npm-builder Containerfile** and rejects recipe scripts that call commands not derived from it. Post-validation also enforces **`facts.factory`** (install line with `--include=dev` when builds need devDependencies, monorepo `package_dir`, and `needs_human` when pnpm/`workspace:` blockers are present). The **npm-registry on-pr** pipeline runs the real factory build — kitchen does not run npm-builder locally.
 
 `REGISTRY_PUSH_TOKEN` is required for registry fork pushes (`drafted` and `needs_human` with recipe files).
 Upstream `REGISTRY_REPO_FULL_NAME` is cloned anonymously when public (no PAT read).

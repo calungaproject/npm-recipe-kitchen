@@ -71,8 +71,9 @@ describe('normalizeRepoUrl', () => {
     assert.equal(normalizeRepoUrl('http://github.com/a/b.git'), null);
   });
 
-  it('rejects an ambiguous owner/repo shorthand (no host)', () => {
-    assert.equal(normalizeRepoUrl('acme/foo'), null);
+  it('accepts npm owner/repo github shorthand', () => {
+    assert.deepEqual(normalizeRepoUrl('chalk/chalk'), { git_url: 'https://github.com/chalk/chalk.git', host: 'github.com' });
+    assert.deepEqual(normalizeRepoUrl('acme/foo'), { git_url: 'https://github.com/acme/foo.git', host: 'github.com' });
   });
 });
 
@@ -260,6 +261,18 @@ describe('computeFacts — package/policy outcomes (needs_human, facts_available
     assert.equal(out.bundle.classification.tier_a_eligible, false);
     assert.equal(out.bundle.classification.reason_code, REASON.NATIVE_OR_BUILD_INDICATORS);
     assert.equal(out.bundle.classification.native_tier, 'C');
+  });
+
+  it('records factory blockers for pnpm monorepos', async () => {
+    const out = await computeFacts('zod@4.5.4', makeOptions({ adapters: {
+      sourcePackageJson: { name: 'zod', version: '4.5.4', scripts: { build: 'zshy' } },
+      rootPackageJson: { private: true, packageManager: 'pnpm@10.12.1', devDependencies: { zod: 'workspace:*' } },
+      package_dir_rel: 'packages/zod',
+    } }));
+    assert.equal(out.status, 'ok');
+    assert.ok(out.bundle.factory.blockers.includes('pnpm-workspace'));
+    assert.equal(out.bundle.source.package_dir, 'packages/zod');
+    assert.equal(out.bundle.factory.install_command, 'npm install --include=dev --ignore-scripts');
   });
 });
 

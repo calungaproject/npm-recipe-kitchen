@@ -32,6 +32,7 @@ import { createHash } from 'node:crypto';
 import { FACT_BUNDLE_SCHEMA_VERSION } from './fact-bundle-constants.mjs';
 import { TEMPLATE_ID as TIER_A_TEMPLATE_ID } from './templates/tier-a-npm-pack-no-build-v1.mjs';
 import { isValidRegistryContractSha } from './registry-contract.mjs';
+import { buildFactorySection, detectFactoryBlockers } from './factory-contract.mjs';
 
 export const COLLECTOR_VERSION = 1;
 
@@ -132,8 +133,15 @@ export function normalizeRepoUrl(repository) {
   if (typeof raw !== 'string' || raw.length === 0) return null;
 
   let url = raw.trim();
-  // Shorthand `github:owner/repo` / `owner/repo` are ambiguous about host in the
-  // general case; only accept the explicit `github:` shorthand for github.
+  // npm package.json shorthand: bare `owner/repo` means github.com/owner/repo.
+  const npmGithubShorthand = /^([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+)$/.exec(url);
+  if (npmGithubShorthand) {
+    const owner = npmGithubShorthand[1];
+    const repo = npmGithubShorthand[2].replace(/\.git$/, '');
+    return { git_url: `https://github.com/${owner}/${repo}.git`, host: 'github.com' };
+  }
+
+  // Explicit `github:owner/repo` shorthand.
   const shorthand = /^github:([^/\s]+)\/([^/\s#]+)$/.exec(url);
   if (shorthand) {
     return { git_url: `https://github.com/${shorthand[1]}/${shorthand[2].replace(/\.git$/, '')}.git`, host: 'github.com' };
@@ -582,6 +590,11 @@ export async function computeFacts(identity, options = {}) {
   }
   const sourcePackageJson = sourcePack.packageJson || {};
   const sourceFiles = Array.isArray(sourcePack.sourceFiles) ? sourcePack.sourceFiles.map(normalizeRel) : [];
+  const packageDirRel = typeof sourcePack.package_dir_rel === 'string' ? sourcePack.package_dir_rel : '.';
+  const rootPackageJson = sourcePack.rootPackageJson && typeof sourcePack.rootPackageJson === 'object'
+    ? sourcePack.rootPackageJson
+    : sourcePackageJson;
+  const { blockers, blocker_details } = detectFactoryBlockers(rootPackageJson, sourcePackageJson);
   const usedRegistryPackedLayout = sourcePack.packSkipped === true;
   if (usedRegistryPackedLayout) {
     couldNotVerify.push(
@@ -639,6 +652,12 @@ export async function computeFacts(identity, options = {}) {
       detail: `${classification.reason_code}: ${classification.reason}`,
     });
   }
+  if (blockers.length > 0) {
+    evidence.push({
+      kind: 'factory-blocker',
+      detail: blocker_details.join('; '),
+    });
+  }
 
   const bundle = {
     schema_version: FACT_BUNDLE_SCHEMA_VERSION,
@@ -660,7 +679,14 @@ export async function computeFacts(identity, options = {}) {
       annotated_tag: tagRes.annotated === true,
       tag_matches_version: true,
       resolution_method: resolutionMethod,
+      package_dir: packageDirRel,
     },
+    factory: buildFactorySection({
+      hasBuildStep: upstream.has_build_step === true,
+      packageDirRel,
+      blockers,
+      blockerDetails: blocker_details,
+    }),
     upstream,
     classification: {
       tier_a_eligible: classification.eligible,

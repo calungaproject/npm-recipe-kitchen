@@ -9,6 +9,7 @@ import { join } from 'node:path';
 import { validateRecipeResult, validateNeedsHumanResult } from './recipe-validator.mjs';
 import { validateRecipeBundle, recipeDirForIdentity } from './recipe-bundle.mjs';
 import { validateFacts } from './facts.mjs';
+import { validateDraftedAgainstFactoryBlockers } from './factory-contract.mjs';
 
 /**
  * @typedef {Object} PostValidateOutcome
@@ -72,6 +73,16 @@ export function runPostValidation({ resultPath, inputPath, repoRoot, renderRoot,
     const validation = validateRecipeResult(result, facts);
     if (!validation.valid) {
       return { ok: false, reason_code: 'RESULT_REJECTED', errors: validation.errors, message: 'recipe result rejected against trusted facts' };
+    }
+
+    const factoryBlockerErrors = validateDraftedAgainstFactoryBlockers(facts, result.status);
+    if (factoryBlockerErrors.length > 0) {
+      return {
+        ok: false,
+        reason_code: 'FACTORY_BLOCKER',
+        errors: factoryBlockerErrors,
+        message: 'drafted outcome is not allowed when facts.factory.blockers is non-empty; use needs_human',
+      };
     }
 
     const recipeDir = recipeDirForIdentity(renderTarget, result.package);

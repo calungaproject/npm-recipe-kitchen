@@ -66,6 +66,8 @@ export function makeAdapters(over = {}) {
       sourceFiles,
       packedPackageJson,
       packedFiles,
+      package_dir_rel: over.package_dir_rel ?? '.',
+      rootPackageJson: over.rootPackageJson ?? sourcePackageJson,
     })),
   };
   return adapters;

@@ -15,7 +15,7 @@
 
 import { spawnSync } from 'node:child_process';
 import { mkdtempSync, rmSync, writeFileSync, readFileSync, readdirSync, existsSync } from 'node:fs';
-import { join } from 'node:path';
+import { relative, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { createHash } from 'node:crypto';
 
@@ -249,6 +249,9 @@ export async function packFromSource({ git_url, commit_sha, package_name }) {
     runOrThrow('git', ['-C', src, 'checkout', '--quiet', commit_sha], { env });
 
     const packageDir = resolvePackageDir(src, package_name);
+    const rootManifestPath = join(src, 'package.json');
+    const rootPackageJson = existsSync(rootManifestPath) ? readPackageJson(rootManifestPath) : {};
+    const packageDirRel = relative(src, packageDir).replace(/\\/g, '/') || '.';
     const sourceFiles = listFilesRecursive(packageDir).filter(f => !f.startsWith('.git/'));
     const sourcePkg = readPackageJson(join(packageDir, 'package.json'));
 
@@ -262,6 +265,8 @@ export async function packFromSource({ git_url, commit_sha, package_name }) {
           packageJson: sourcePkg,
           sourceFiles,
           packSkipped: true,
+          package_dir_rel: packageDirRel,
+          rootPackageJson,
         };
       }
       throw err;
@@ -278,6 +283,8 @@ export async function packFromSource({ git_url, commit_sha, package_name }) {
       packedFiles: inspected.files,
       tarball: tarballBuf,
       tarballSha256: createHash('sha256').update(tarballBuf).digest('hex'),
+      package_dir_rel: packageDirRel,
+      rootPackageJson,
     };
   } finally {
     rmSync(dir, { recursive: true, force: true });

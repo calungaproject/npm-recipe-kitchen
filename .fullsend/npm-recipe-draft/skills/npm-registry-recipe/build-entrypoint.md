@@ -43,6 +43,8 @@ assert_tgz_has_member() {
 }
 ```
 
+**Do not use `file(1)`** in error paths — it is not installed in npm-builder. Use `tar tf "${tgz}" >&2 || true` only.
+
 ## Tier A — pack-only
 
 1. `git clone --depth 1 --branch "${SOURCE_REF}" "${SOURCE_URL}" "${WORK_DIR}/src"`
@@ -55,16 +57,18 @@ Reference: `npm-registry/packages/lodash/4.18.1/build.entrypoint.sh`
 
 ## Tier A — build then pack
 
-Same as pack-only, but after clone:
+Same as pack-only, but after clone (and `cd` into `facts.source.package_dir` when not `"."`):
 
 ```bash
-npm install --ignore-scripts   # or full install if build tools needed
+npm install --include=dev --ignore-scripts   # use facts.factory.install_command when has_build_step
 npm run build                  # or upstream's documented build command
 ```
 
 Then `npm pack`. Assert dist/output files referenced in smoke (e.g. `package/dist/async.js`).
 
-Reference: `npm-registry/packages/async/3.2.6/build.entrypoint.sh`
+**Why `--include=dev`:** npm-builder sets `NODE_ENV=production`, which omits devDependencies from a plain `npm install` (TypeScript, babel, etc.).
+
+Reference: `npm-registry/packages/async/3.2.6/build.entrypoint.sh` (align install line with factory contract)
 
 ## Tier B — dual tarball (esbuild pattern)
 
@@ -119,8 +123,9 @@ Reference: `npm-registry/packages/better-sqlite3/11.8.1/tl-install.js`
 
 ## Monorepo tips
 
-- Locate `package.json` with matching `"name"` field after clone
+- Read `facts.source.package_dir` — clone repo root, then `cd` into that path before install/pack
 - esbuild: sources under `npm/esbuild` and `npm/@esbuild/linux-x64`
+- If `facts.factory.blockers` is non-empty (pnpm, `workspace:*`), emit **`needs_human`** — do not run `npm install` at monorepo root
 - Document chosen subdirectory in evidence
 
 ## Packing note

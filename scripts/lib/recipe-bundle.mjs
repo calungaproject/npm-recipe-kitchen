@@ -10,6 +10,7 @@ import Ajv2020 from 'ajv/dist/2020.js';
 
 import { deriveManifestBinding } from './fact-bundle.mjs';
 import { validateShellCommandsForNpmBuilder } from './validate-shell-commands.mjs';
+import { validateEntrypointAgainstFactory } from './factory-contract.mjs';
 
 export const RECIPE_PACKAGES_BASE = 'packages';
 export const RECIPE_DRAFTS_BASE = 'recipes/drafts';
@@ -138,8 +139,20 @@ export function validateRecipeBundle({ recipeDir, renderRoot, facts }) {
   }
 
   validateManifestSemantics(manifest, errors);
-  validateShellScript(join(absRecipe, 'build.entrypoint.sh'), 'build.entrypoint.sh', errors);
+  const entrypointPath = join(absRecipe, 'build.entrypoint.sh');
+  validateShellScript(entrypointPath, 'build.entrypoint.sh', errors);
   validateShellScript(join(absRecipe, 'verify.smoke.sh'), 'verify.smoke.sh', errors);
+
+  if (facts && existsSync(entrypointPath)) {
+    try {
+      const entryContent = readFileSync(entrypointPath, 'utf-8');
+      for (const err of validateEntrypointAgainstFactory(entryContent, facts)) {
+        errors.push(err);
+      }
+    } catch {
+      // read errors already recorded by validateShellScript
+    }
+  }
 
   if (facts) {
     bindManifestToFacts(manifest, facts, errors);
