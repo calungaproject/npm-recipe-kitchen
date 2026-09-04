@@ -217,6 +217,8 @@ function firstCommandName(segment) {
   }
   if (first.startsWith('-')) return null;
   if (first.includes('$') || first.includes('{') || first.includes('}')) return null;
+  // Git trailers / header lines (e.g. Assisted-by: Claude) are not shell commands.
+  if (first.includes(':') && !/^https?:/i.test(first)) return null;
 
   const name = first.toLowerCase();
   // npm subcommands (npm pack, npm run, npm install, …) — npm is on PATH.

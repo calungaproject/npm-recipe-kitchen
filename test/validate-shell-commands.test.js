@@ -108,4 +108,13 @@ dump_tgz_listing /tmp/foo.tgz
     const errors = validateShellCommandsForNpmBuilder(script, 'verify.smoke.sh');
     assert.ok(errors.some((e) => e.message.includes('command "file"')));
   });
+
+  it('ignores git trailer lines like Assisted-by', () => {
+    const script = `#!/usr/bin/env bash
+set -euo pipefail
+Assisted-by: Claude
+npm pack --quiet
+`;
+    assert.deepEqual(validateShellCommandsForNpmBuilder(script, 'build.entrypoint.sh'), []);
+  });
 });

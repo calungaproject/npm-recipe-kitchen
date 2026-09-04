@@ -109,7 +109,7 @@ compare_url="$(jq -nr \
   --arg head "${pr_head}" \
   --arg title "${pr_title}" \
   --arg body "${pr_body}" \
-  '"https://github.com/\($base)/compare/\($target)...\($head)?quick_pull=1&title=" + ($title|@uri) + "&body=" + ($body|@uri)')
+  '"https://github.com/\($base)/compare/\($target)...\($head)?quick_pull=1&title=" + ($title|@uri) + "&body=" + ($body|@uri)')"
 
 post_manual_pr_link() {
   local extra_note="${1:-}"
