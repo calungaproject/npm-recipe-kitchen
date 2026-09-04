@@ -269,10 +269,13 @@ export function validateShellCommandsForNpmBuilder(content, label) {
     if (SHELL_BUILTINS.has(name) || allowed.has(name) || localFunctions.has(name)) continue;
     if (seen.has(name)) continue;
     seen.add(name);
+    const hint = name === 'file'
+      ? ' (use tar tf for tarball diagnostics; file(1) is not in npm-builder)'
+      : '';
     errors.push({
       check: 'npm-builder-command',
       path: `/${label}`,
-      message: `command "${name}" is not available in the npm-builder factory image (parse registry-contract/npm-builder/Containerfile or plumbing/npm-builder/Containerfile)`,
+      message: `command "${name}" is not available in the npm-builder factory image${hint} (parse registry-contract/npm-builder/Containerfile or plumbing/npm-builder/Containerfile)`,
     });
   }
   return errors;

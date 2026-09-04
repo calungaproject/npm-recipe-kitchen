@@ -119,6 +119,47 @@ describe('runPostValidation — drafted (agent-authored recipe bundle)', () => {
     assert.equal(res.ok, false);
     assert.ok(res.errors.some(e => e.check === 'could-not-verify-omitted'));
   });
+
+  it('rejects drafted when facts.factory.blockers is non-empty', async () => {
+    const bundle = await collectorBundle();
+    bundle.factory = {
+      blockers: ['pnpm-workspace'],
+      blocker_details: ['root packageManager is pnpm'],
+      install_command: 'npm install --include=dev --ignore-scripts',
+      package_dir: 'packages/zod',
+      node_env: 'production',
+    };
+    writeMinimalTierARecipe(work, bundle);
+    const inputPath = writeInputFromOutcome('foo@1.2.3', { status: 'ok', bundle });
+    const resultPath = writeResult(draftResultFromFacts(bundle));
+
+    const res = run(inputPath, resultPath);
+    assert.equal(res.ok, false);
+    assert.equal(res.reason_code, 'FACTORY_BLOCKER');
+  });
+
+  it('rejects build recipes that omit npm install --include=dev', async () => {
+    const bundle = await collectorBundle();
+    bundle.upstream = { ...(bundle.upstream ?? {}), has_build_step: true };
+    bundle.factory = {
+      blockers: [],
+      install_command: 'npm install --include=dev --ignore-scripts',
+      package_dir: '.',
+      node_env: 'production',
+    };
+    writeMinimalTierARecipe(work, bundle);
+    const entrypoint = join(work, 'packages', 'foo', '1.2.3', 'build.entrypoint.sh');
+    writeFileSync(entrypoint, readFileSync(entrypoint, 'utf-8').replace(
+      'npm pack --quiet',
+      'npm install --ignore-scripts\nnpm run build\npacked="$(npm pack --quiet)"',
+    ));
+    const inputPath = writeInputFromOutcome('foo@1.2.3', { status: 'ok', bundle });
+    const resultPath = writeResult(draftResultFromFacts(bundle));
+
+    const res = run(inputPath, resultPath);
+    assert.equal(res.ok, false);
+    assert.ok(res.errors.some((e) => e.check === 'factory-install-devdeps'));
+  });
 });
 
 describe('runPostValidation — drafted is impossible without an exact valid bundle', () => {

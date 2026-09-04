@@ -75,6 +75,8 @@ dump_tgz_listing() {
 }
 ```
 
+**Do not use `file(1)`** — npm-builder has `tar` and `od`, not `file`. On tarball errors, list with `tar tf` only.
+
 ## What smoke should not do
 
 - Network calls

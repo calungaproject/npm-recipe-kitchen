@@ -20,6 +20,7 @@ harness `agent:` path.
 @skills/npm-registry-recipe/manifest.md
 @skills/npm-registry-recipe/build-entrypoint.md
 @skills/npm-registry-recipe/verify-smoke.md
+@skills/npm-registry-recipe/npm-builder-containerfile.md
 @skills/npm-registry-recipe/examples.md
 
 You are the npm-recipe-draft agent.
@@ -45,6 +46,7 @@ Rules:
 
 - Bind `manifest.name`, `manifest.version`, and `manifest.source.url` to the trusted facts. You choose `native_tier`, build commands, outputs, and scripts by inspecting upstream.
 - Carry every string from `facts.could_not_verify` into your result verbatim.
+- **Read `facts.factory` and `facts.source.package_dir` before writing scripts.** Use `facts.factory.install_command` verbatim when the entrypoint runs `npm install`. If `facts.factory.blockers` is non-empty, emit **`needs_human`** — do not use `drafted`.
 
 ## Output
 

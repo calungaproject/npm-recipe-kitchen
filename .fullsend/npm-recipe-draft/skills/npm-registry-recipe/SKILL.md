@@ -37,6 +37,18 @@ Do **not** create `out/` (factory output, gitignored). Do **not** author `compli
 5. **Treat merged recipes as immutable** — fixes ship as a new version directory.
 6. **Use only npm-builder commands** — derive from `plumbing/npm-builder/Containerfile` (see [npm-builder-containerfile.md](npm-builder-containerfile.md)). Post-validation parses the pinned snapshot; Konflux on-pr runs the real build.
 
+## Trusted factory fields (`recipe-input.json`)
+
+Always read before drafting scripts:
+
+| Field | Use |
+| --- | --- |
+| `facts.factory.install_command` | Copy into `build.entrypoint.sh` when `npm install` is needed |
+| `facts.factory.node_env` | Explains why `--include=dev` is required for builds |
+| `facts.source.package_dir` | Subdirectory under clone root (`"."` = repo root is the package) |
+| `facts.factory.blockers` | Non-empty → **`needs_human`**, never `drafted` |
+| `facts.upstream.has_build_step` | When true, devDependencies are required for build |
+
 Factory env vars (always available in entrypoint/smoke):
 
 | Var | Meaning |
@@ -90,6 +102,8 @@ Proposal background (factory model, L1–L3, install policy): `npm-registry/docs
 When `recipe-input.json` is present, treat `facts` as authoritative for:
 
 - package identity, git URL, commit SHA, tag
+- **`facts.factory`** — install command, blockers, `NODE_ENV` behavior
+- **`facts.source.package_dir`** — where the publishable package lives in the cloned repo
 - upstream `main_entry`, CLI layout, provenance flags
 - `could_not_verify` gaps (carry into evidence; do not silently ignore)
 
@@ -101,6 +115,7 @@ If you are **not confident** the recipe is production-ready, emit `needs_human` 
 
 Emit `needs_human` when:
 
+- `facts.factory.blockers` is non-empty (pnpm/yarn monorepo, `workspace:` protocol)
 - Source repo or tag for the requested version cannot be verified
 - Monorepo layout is ambiguous (multiple publishable packages)
 - Native layout does not match A/B/C patterns you can implement safely

@@ -84,7 +84,7 @@ assert_tgz_has_member() {
     tar -xOf "\${tgz}" "\${member}" >/dev/null 2>&1 || {
         echo "[build.entrypoint] \${tgz} missing \${member}" >&2
         echo "Tarball listing:" >&2
-        tar tf "\${tgz}" >&2 || file "\${tgz}" >&2 || true
+        tar tf "\${tgz}" >&2 || true
         exit 1
     }
 }
