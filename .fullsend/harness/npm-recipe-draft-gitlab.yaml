@@ -1,0 +1,49 @@
+# Fullsend agent harness: npm-recipe-draft (GitLab adaptation).
+#
+# Fork of npm-recipe-draft.yaml for the Fullsend GitLab spike.
+# Changes from the GitHub version:
+#   - post_script points to post-recipe-validate-gitlab.sh
+#   - env.runner uses GitLab project paths instead of GitHub org/repo
+#   - DEFER_REGISTRY_PUBLISH removed (GitLab script publishes inline)
+#   - GITLAB_HOST set explicitly for gitlab.cee.redhat.com
+agent: npm-recipe-draft/CLAUDE.md
+role: coder
+
+providers:
+    - vertex-ai
+
+host_files:
+    - src: env/gcp-vertex.env
+      dest: /sandbox/workspace/.env.d/gcp-vertex.env
+      expand: true
+    - src: ${GOOGLE_APPLICATION_CREDENTIALS}
+      dest: /tmp/.gcp-credentials.json
+    - src: ${GCP_OIDC_TOKEN_FILE}
+      dest: /sandbox/workspace/.gcp-oidc-token
+      optional: true
+    - src: /tmp/fullsend-npm-recipe-draft/recipe-input.json
+      dest: /sandbox/workspace/recipe-input.json
+      optional: true
+
+pre_script: npm-recipe-draft/pre-recipe-facts.sh
+
+validation_loop:
+    script: npm-recipe-draft/validate-recipe-result.sh
+    schema: npm-recipe-draft/schemas/recipe-result.schema.json
+    max_iterations: 2
+
+env:
+    runner:
+        FULLSEND_OUTPUT_FILE: recipe-result.json
+        GITLAB_HOST: gitlab.cee.redhat.com
+        REGISTRY_REPO_FULL_NAME: ryordan/npm-registry
+        REGISTRY_PUSH_REPO_FULL_NAME: ryordan/npm-registry
+        KITCHEN_REPO_FULL_NAME: ryordan/npm-recipe-kitchen
+    sandbox:
+        RECIPE_INPUT_FILE: /sandbox/workspace/recipe-input.json
+        RECIPE_PACKAGES_DIR: /sandbox/workspace/target-repo/packages
+        RECIPE_PACKAGES_BASE: packages
+        FULLSEND_OUTPUT_DIR: /sandbox/workspace/output
+        FULLSEND_OUTPUT_FILE: recipe-result.json
+
+post_script: npm-recipe-draft/post-recipe-validate-gitlab.sh
