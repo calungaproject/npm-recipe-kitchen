@@ -1,0 +1,12 @@
+---
+include:
+  - local: '.gitlab/ci/fullsend-pipeline.yml'
+
+workflow:
+  name: 'fullsend $CI_PIPELINE_SOURCE $STAGE $RESOURCE_KEY'
+  auto_cancel:
+    on_new_commit: none
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_PIPELINE_SOURCE == "schedule" && $CI_COMMIT_REF_PROTECTED == "true"
+    - if: $CI_PIPELINE_SOURCE == "api" && $CI_COMMIT_REF_PROTECTED == "true" && $STAGE
