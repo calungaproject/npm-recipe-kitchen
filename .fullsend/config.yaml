@@ -2,31 +2,20 @@
 # https://github.com/fullsend-ai/fullsend
 #
 # This file configures fullsend for per-repo installation mode.
-# See ADR 0033 for details.
+# See https://fullsend.sh/docs/guides/infrastructure/layered-config-reference
 version: "1"
-kill_switch: false
-# Every role the dispatch pipeline mints a token for must be declared here, or
-# the mint service returns HTTP 502 (backend crash, not a clean 403).
-# - `coder`: the custom npm-recipe-draft harness dispatches as this role.
-# - `review`: the stock Review job in the reusable dispatch workflow runs on
-#   every PR and mints a `review` token, independent of custom agents.
-# Stock *agents* (triage/retro/etc.) remain intentionally stripped; that is
-# separate from the roles the pipeline itself requires.
 roles:
+    - triage
     - coder
     - review
-agents:
-    - name: npm-recipe-draft
-      source: harness/npm-recipe-draft-gitlab.yaml
-    - name: npm-recipe-draft-github
-      source: harness/npm-recipe-draft.yaml
-    - name: npm-priority-queue
-      source: harness/npm-priority-queue.yaml
+    - fix
+    - retro
+    - prioritize
 allowed_remote_resources:
     - https://raw.githubusercontent.com/fullsend-ai/fullsend/
     - https://raw.githubusercontent.com/fullsend-ai/agents/
 create_issues:
     allow_targets:
         repos:
-            - calungaproject/npm-recipe-kitchen
+            - ryordan/npm-recipe-kitchen
             - fullsend-ai/fullsend
