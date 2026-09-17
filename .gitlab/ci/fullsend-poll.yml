@@ -30,7 +30,7 @@ spec:
       # Install fullsend CLI at the version pinned during
       # `fullsend repos install`. Mirrors the GitHub Actions
       # install-fullsend-cli action (#6445).
-      FULLSEND_VERSION="v0.43.0"
+      FULLSEND_VERSION="main"
       FULLSEND_REPO="fullsend-ai/fullsend"
       # Resolve "latest" to the actual release tag.
       if [ "${FULLSEND_VERSION}" = "latest" ]; then
