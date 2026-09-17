@@ -3,5 +3,6 @@
 version: 1
 gitlab:
     url: https://gitlab.cee.redhat.com
+    fullsend_ref: v0.43.0
     repos:
         - name: ryordan/npm-recipe-kitchen
