@@ -78,7 +78,7 @@ Read manifest fields with `jq`. Resolve `out/foo.tgz` as `${OUT_DIR}/foo.tgz` (s
 | **B** | Upstream ships optional platform family (esbuild-style); TL rebuilds or vendors linux-x64 binary | main + `tl-platform-package` |
 | **C** | Native addon compiled in factory (node-gyp, etc.) | main + `tl-platform-package` |
 
-**Tier A nuance:** `npm run build` for JS bundling/transpile is still Tier A if there is no platform optional and no consumer native compile. See `async@3.2.6` in npm-registry.
+**Tier A nuance:** Some packages use **`make`** (not `npm run build`) and publish from a staging dir — see `async@3.2.6` (`make` → pack from `build/`). Only use `npm run build` when upstream `package.json` defines that script.
 
 **Not Tier A:** `binding.gyp`, `.node` in published tree, `prebuild-install`, install scripts that download binaries, multiple platform optionals, or monorepo paths you cannot map confidently.
 
@@ -89,7 +89,7 @@ In `calungaproject/npm-registry` at `packages/`:
 | Package | Tier | Why read it |
 | --- | --- | --- |
 | `lodash/4.18.1` | A | Minimal `npm pack` from tag |
-| `async/3.2.6` | A | `npm install` + `npm run build` before pack |
+| `async/3.2.6` | A | `make` + pack from `build/` (not repo-root `npm pack`) |
 | `esbuild/0.28.0` | B | Upstream make + dual tarball + install.js patch |
 | `better-sqlite3/11.8.1` | C | node-gyp compile + `tl-install.js` shim |
 

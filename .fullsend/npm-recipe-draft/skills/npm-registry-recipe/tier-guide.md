@@ -15,7 +15,7 @@ Classify before writing scripts. Wrong tier breaks factory assumptions and consu
 **Build strategies (pick one after inspecting repo):**
 
 1. **Pack-only** — clone tag, `npm pack` from root (`lodash`)
-2. **Build then pack** — use `facts.factory.install_command` (usually `npm install --include=dev --ignore-scripts` because npm-builder sets `NODE_ENV=production`), then `npm run build`, then `npm pack` (`async`, `uuid`)
+2. **Build then pack** — use `facts.factory.install_command` (usually `npm install --include=dev --ignore-scripts` because npm-builder sets `NODE_ENV=production`), then `npm run build`, then `npm pack` — only when `facts.upstream.has_build_step` is true and upstream `package.json` actually defines that script (`uuid`, not `async`)
 3. **Subpath / monorepo** — clone, `cd` to package dir inside repo, then pack (document path in evidence)
 
 **Still Tier A even when:**
