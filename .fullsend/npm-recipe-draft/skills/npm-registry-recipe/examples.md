@@ -11,12 +11,12 @@ Study these merged recipes in `calungaproject/npm-registry` (`packages/`). Clone
 - **Smoke:** `package/lodash.js`, `node --check`
 - **Copy when:** single-package repo, no build step, dist already in tag
 
-### async@3.2.6 — JS build before pack
+### async@3.2.6 — make build, pack from `build/`
 
 - **Path:** `packages/async/3.2.6/`
-- **Pattern:** clone → `npm install --include=dev --ignore-scripts` → `npm run build` → `npm pack`
-- **Smoke:** `package/dist/async.js`
-- **Copy when:** TypeScript/bundler produces `dist/` at build time but no native platform package
+- **Pattern:** clone → `npm install --include=dev --ignore-scripts` → `make build-es build-modules build-bundle build-dist build-config` → `npm pack` from **`build/`** (upstream publishes from that dir, not repo root)
+- **Smoke:** `package/dist/async.js`, `package/dist/async.mjs`, `package/all.js` (matches registry.npmjs.org layout)
+- **Copy when:** upstream has no `npm run build` but ships via Makefile staging (`build/`); do not `npm pack` at repo root
 
 ### express@4.22.0 / debug@4.4.3 / bluebird@3.7.2
 

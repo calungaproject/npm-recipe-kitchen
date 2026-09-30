@@ -68,7 +68,7 @@ Then `npm pack`. Assert dist/output files referenced in smoke (e.g. `package/dis
 
 **Why `--include=dev`:** npm-builder sets `NODE_ENV=production`, which omits devDependencies from a plain `npm install` (TypeScript, babel, etc.).
 
-Reference: `npm-registry/packages/async/3.2.6/build.entrypoint.sh` (align install line with factory contract)
+Reference: `npm-registry/packages/lodash/4.18.1/build.entrypoint.sh` for pack-only; use build-then-pack only when `facts.upstream.has_build_step` is true and `npm run` lists the script
 
 ## Tier B — dual tarball (esbuild pattern)
 
